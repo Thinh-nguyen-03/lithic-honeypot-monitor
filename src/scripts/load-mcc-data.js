@@ -1,4 +1,4 @@
-import { loadMCCData } from '../src/mcc-loader.js';
+import { loadMCCData } from './mcc-loader.js';
 
 console.log('🚀 Starting MCC data load...');
 
