@@ -17,7 +17,7 @@ const supabase = createClient(
  * Load MCC data from JSON file
  */
 function loadMCCDataFromFile() {
-  const filePath = join(__dirname, 'data', 'mcc-data.json');
+  const filePath = join(__dirname, '..', 'data', 'mcc-data.json');
   const fileContent = readFileSync(filePath, 'utf-8');
   return JSON.parse(fileContent);
 }
