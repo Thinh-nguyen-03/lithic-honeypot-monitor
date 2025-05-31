@@ -3,7 +3,6 @@ import {
   parseTransactionDetails,
   parseMerchantInfo,
 } from "../utils/parsers.js";
-import alertService from "./alert-service.js";
 import logger from "../utils/logger.js";
 
 /**
@@ -164,7 +163,6 @@ export async function saveTransaction(lithicTransaction) {
           country: merchantInfoToParse.country || null,
           mcc: merchantInfoToParse.mcc || null,
         };
-        
         if (merchantInfoToParse.acceptor_id) {
           detailsToUpdate.acceptor_id = merchantInfoToParse.acceptor_id;
         }
@@ -300,54 +298,6 @@ export async function saveTransaction(lithicTransaction) {
       },
       "Transaction processed and saved successfully to Supabase.",
     );
-
-    // NEW: Trigger real-time alert after successful transaction save
-    try {
-      const alertData = {
-        alertType: 'NEW_TRANSACTION',
-        timestamp: new Date().toISOString(),
-        transactionId: transactionDetailsToSave.token,
-        cardToken: transactionDetailsToSave.card_token,
-        immediate: {
-          amount: `$${(transactionDetailsToSave.cardholder_amount / 100).toFixed(2)}`,
-          merchant: merchantInfoToParse.descriptor || 'Unknown Merchant',
-          location: [merchantInfoToParse.city, merchantInfoToParse.state, merchantInfoToParse.country]
-            .filter(Boolean).join(', ') || 'Unknown Location',
-          status: transactionDetailsToSave.result,
-          network: transactionDetailsToSave.network_type,
-          networkTransactionID: transactionDetailsToSave.network_transaction_id
-        },
-        verification: {
-          mccCode: merchantInfoToParse.mcc || '',
-          merchantType: 'Available from MCC lookup',
-          merchantCategory: 'Available from MCC lookup',
-          authorizationCode: transactionDetailsToSave.authorization_code || '',
-          retrievalReference: transactionDetailsToSave.retrieval_reference_number || ''
-        },
-        intelligence: {
-          isFirstTransaction: false, // Can be enhanced later
-          newMerchant: merchantId ? false : true,
-          amountRange: transactionDetailsToSave.cardholder_amount < 500 ? 'small' : 'normal',
-          merchantHistory: merchantId ? 'Known merchant for this card' : 'New merchant for this card',
-          geographicPattern: 'Transaction location analysis'
-        }
-      };
-
-      await alertService.broadcastAlert(transactionDetailsToSave.card_token, alertData);
-      
-      logger.info({ 
-        transactionToken,
-        cardToken: transactionDetailsToSave.card_token 
-      }, 'Transaction saved and alert broadcast successfully');
-
-    } catch (alertError) {
-      // Log alert failure but don't affect transaction save success
-      logger.warn({ 
-        err: alertError, 
-        transactionToken,
-        cardToken: transactionDetailsToSave.card_token 
-      }, 'Alert broadcast failed after successful transaction save');
-    }
 
     return {
       success: true,
