@@ -128,6 +128,7 @@ export async function simulateTransaction(
     logger.info(
       `Simulated transaction: ${simulation.token}, Status: ${simulation.status}, Result: ${simulation.result}`,
     );
+    
     return simulation;
   } catch (error) {
     logger.error("Error simulating transaction:", {

@@ -156,6 +156,7 @@ export async function listCards(params = {}) {
         created: card.created,
       });
     }
+    
     logger.debug(`Listed ${cards.length} cards from Lithic.`);
     return cards;
   } catch (error) {
