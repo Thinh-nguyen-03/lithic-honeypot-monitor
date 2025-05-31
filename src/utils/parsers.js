@@ -5,8 +5,7 @@
  */
 export function parseTransactionDetails(transaction) {
   // Get the first event (most recent)
-  const event =
-    transaction.events && transaction.events[0] ? transaction.events[0] : {};
+  const event = transaction.events && transaction.events[0] ? transaction.events[0] : {};
 
   // Parse amounts
   const cardholderInfo = event.amounts?.cardholder || {};
