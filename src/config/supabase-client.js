@@ -4,4 +4,5 @@ import { config } from './index.js';
 export const supabase_client = createClient(
   config.supabase.url,
   config.supabase.serviceKey
+  
 );
