@@ -86,7 +86,7 @@ curl -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application
 ### **2.1 Set Up AI Agent Connection**
 ```bash
 # Subscribe an AI agent to real-time alerts
-curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_test_123&sessionId=demo-session-001" -H "Authorization: Bearer demo-token" -H "Accept: text/event-stream"
+curl -X POST "http://localhost:3000/api/mcp/subscribe" -H "Content-Type: application/json" -d "@test-mcp-subscribe.json"
 ```
 
 **Demo Point:** *"This endpoint establishes a real-time connection where AI agents receive instant notifications."*
@@ -94,7 +94,7 @@ curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_test_12
 ### **2.2 Test Alert Broadcasting**
 ```bash
 # Send a test alert (open new terminal window)
-curl -X POST http://localhost:3000/api/alerts/test -H "Content-Type: application/json" -d "{\"cardTokens\": [\"card_test_123\"], \"alertType\": \"TEST_DEMO\", \"message\": \"Demo alert for team presentation\"}"
+curl -X POST http://localhost:3000/alerts/test-alert -H "Content-Type: application/json" -d "{\"cardToken\": \"card_test_123\", \"alertType\": \"TEST_DEMO\", \"transactionData\": {\"amount\": \"$5.00\", \"merchant\": \"Demo Coffee Shop\", \"location\": \"Demo City, TX\"}}"
 ```
 
 **Expected:** The subscribed connection receives instant alert
@@ -102,16 +102,19 @@ curl -X POST http://localhost:3000/api/alerts/test -H "Content-Type: application
 ### **2.3 Connection Management**
 ```bash
 # Check active connections
-curl http://localhost:3000/api/alerts/metrics
+curl http://localhost:3000/alerts/metrics
 ```
 
 **Expected Response:**
 ```json
 {
-  "activeConnections": 1,
-  "totalAlerts": 1,
-  "connectionsByCard": {
-    "card_test_123": 1
+  "connections": {
+    "active": 1,
+    "total": 1
+  },
+  "alerts": {
+    "messagesSent": 1,
+    "messagesDelivered": 1
   }
 }
 ```
@@ -125,7 +128,7 @@ curl http://localhost:3000/api/alerts/metrics
 ### **3.1 AI Agent Subscription**
 ```bash
 # Enhanced MCP subscription with multiple cards
-curl -X POST http://localhost:3000/api/vapi/subscribe -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\", \"cardTokens\": [\"card_demo_001\", \"card_demo_002\"], \"agentConfig\": {\"name\": \"FraudDetectionAgent\", \"capabilities\": [\"scammer_verification\", \"pattern_analysis\"]}}"
+curl -X POST http://localhost:3000/api/mcp/subscribe -H "Content-Type: application/json" -d "{\"agentId\": \"ai-agent-demo-001\", \"cardTokens\": [\"card_demo_001\", \"card_demo_002\"], \"connectionType\": \"sse\", \"metadata\": {\"sessionId\": \"demo-session-001\", \"conversationId\": \"conv-demo-001\"}}"
 ```
 
 **Expected Response:**
@@ -133,10 +136,10 @@ curl -X POST http://localhost:3000/api/vapi/subscribe -H "Content-Type: applicat
 {
   "jsonrpc": "2.0",
   "result": {
-    "status": "subscribed",
-    "sessionId": "ai-agent-demo-001",
-    "registeredCards": ["card_demo_001", "card_demo_002"],
-    "welcomeMessage": "AI agent connected for real-time fraud detection"
+    "sessionId": "uuid",
+    "agentId": "ai-agent-demo-001",
+    "monitoringCards": ["card_demo_001", "card_demo_002"],
+    "status": "subscribed"
   }
 }
 ```
@@ -144,15 +147,15 @@ curl -X POST http://localhost:3000/api/vapi/subscribe -H "Content-Type: applicat
 ### **3.2 Natural Language Transaction Query**
 ```bash
 # Test AI-powered transaction analysis
-curl -X POST http://localhost:3000/api/vapi/query -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\", \"query\": \"Show me large transactions from today that might be suspicious\", \"context\": {\"scammerPhone\": \"+1-555-SCAMMER\", \"verificationActive\": true}}"
+curl -X POST http://localhost:3000/api/mcp/query -H "Content-Type: application/json" -d "{\"toolCallId\": \"tool_demo_001\", \"tool\": \"search_transactions\", \"parameters\": {\"query\": \"Show me large transactions from today that might be suspicious\", \"limit\": 5}}"
 ```
 
 **Demo Point:** *"AI agents can ask natural language questions and get intelligent responses formatted for scammer verification."*
 
-### **3.3 Scammer Verification Intelligence**
+### **3.3 Check Connection Status**
 ```bash
-# Get verification questions for scammer
-curl -X POST http://localhost:3000/api/vapi/verification -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\", \"transactionIds\": [\"txn_demo_123\", \"txn_demo_456\"], \"scammerContext\": {\"claimedLocation\": \"New York\", \"claimedPurchase\": \"coffee\", \"suspicionLevel\": \"high\"}}"
+# Get MCP connection status
+curl http://localhost:3000/api/mcp/health
 ```
 
 **Expected Response:**
@@ -160,21 +163,11 @@ curl -X POST http://localhost:3000/api/vapi/verification -H "Content-Type: appli
 {
   "jsonrpc": "2.0",
   "result": {
-    "verificationQuestions": [
-      "What did you just purchase for $12.45?",
-      "Which Shell station did you use?",
-      "What time did you make this transaction?"
-    ],
-    "transactionIntelligence": {
-      "actualMerchant": "Shell Gas Station #1234",
-      "actualAmount": "$12.45",
-      "actualLocation": "Dallas, TX",
-      "actualTime": "2025-01-30T14:23:15Z"
-    },
-    "discrepancies": [
-      "Claimed coffee purchase vs actual gas station",
-      "Claimed New York vs actual Dallas, TX"
-    ]
+    "status": "healthy",
+    "services": {
+      "mcpServer": {"status": "active"},
+      "alertService": {"status": "active", "activeConnections": 1}
+    }
   }
 }
 ```
@@ -188,7 +181,7 @@ curl -X POST http://localhost:3000/api/vapi/verification -H "Content-Type: appli
 ### **4.1 Comprehensive Transaction Analysis**
 ```bash
 # Get detailed transaction intelligence
-curl -X GET "http://localhost:3000/api/vapi/intelligence?sessionId=ai-agent-demo-001&timeframe=today"
+curl -X POST "http://localhost:3000/api/mcp/intelligence/analyze" -H "Content-Type: application/json" -d "{\"queryType\": \"pattern_analysis\", \"filters\": {\"cardToken\": \"card_demo_001\", \"startDate\": \"2025-01-30T00:00:00Z\", \"endDate\": \"2025-01-30T23:59:59Z\"}, \"options\": {\"includeRiskScore\": true, \"includePatterns\": true}}"
 ```
 
 **Expected Response:**
@@ -217,18 +210,18 @@ curl -X GET "http://localhost:3000/api/vapi/intelligence?sessionId=ai-agent-demo
 }
 ```
 
-### **4.2 Merchant Intelligence**
+### **4.2 MCP Connection Management**
 ```bash
-# Get merchant-specific intelligence
-curl -X GET "http://localhost:3000/api/vapi/merchant/shell-gas-station?sessionId=ai-agent-demo-001"
+# Get MCP connection statistics
+curl -X GET "http://localhost:3000/api/mcp/connections"
 ```
 
 **Demo Point:** *"The system provides deep merchant intelligence for comprehensive scammer verification."*
 
 ### **4.3 Real-Time Connection Status**
 ```bash
-# Check AI agent connection status
-curl -X GET "http://localhost:3000/api/vapi/status?sessionId=ai-agent-demo-001"
+# Check specific AI agent connection status
+curl -X GET "http://localhost:3000/api/mcp/subscription/status/YOUR_SESSION_ID"
 ```
 
 **Expected Response:**
@@ -236,16 +229,13 @@ curl -X GET "http://localhost:3000/api/vapi/status?sessionId=ai-agent-demo-001"
 {
   "jsonrpc": "2.0",
   "result": {
-    "status": "connected",
-    "sessionId": "ai-agent-demo-001",
-    "subscribedCards": ["card_demo_001", "card_demo_002"],
-    "connectionHealth": "excellent",
-    "lastActivity": "2025-01-30T14:25:00Z",
-    "metrics": {
-      "alertsReceived": 5,
-      "queriesProcessed": 12,
-      "verificationsSuggested": 8
-    }
+    "status": "active",
+    "sessionId": "YOUR_SESSION_ID", 
+    "agentId": "ai-agent-demo-001",
+    "connectionHealth": 0.98,
+    "monitoringCards": ["card_demo_001", "card_demo_002"],
+    "alertsReceived": 5,
+    "lastActivity": "2025-01-30T14:25:00Z"
   }
 }
 ```
@@ -359,10 +349,10 @@ curl http://localhost:3000/api/alerts/metrics
 
 ```bash
 # Unsubscribe all test agents
-curl -X DELETE "http://localhost:3000/api/vapi/unsubscribe" -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\"}"
+curl -X DELETE "http://localhost:3000/api/mcp/unsubscribe/YOUR_SESSION_ID?reason=demo_complete"
 
 # Check final metrics
-curl http://localhost:3000/api/alerts/metrics
+curl http://localhost:3000/alerts/metrics
 ```
 
 ---
