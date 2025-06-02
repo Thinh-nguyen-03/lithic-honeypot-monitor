@@ -27,8 +27,8 @@ npm start
 
 ### **3. Verify System Status**
 ```bash
-# Check if server is running (should return TcpTestSucceeded: True)
-Test-NetConnection -ComputerName localhost -Port 3000
+# Check if server is running (should return healthy status)
+curl http://localhost:3000/health
 ```
 
 **System Status: ✅ READY**
@@ -68,20 +68,16 @@ curl http://localhost:3000/health
 
 ### **1.2 Validation Middleware Test**
 ```bash
-# Test enterprise validation (should fail with 400 Bad Request)
-curl -X POST http://localhost:3000/api/lithic/webhook \
-  -H "Content-Type: application/json" \
-  -d '{}'
+# Test enterprise validation (should succeed with empty payload)
+curl -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{}"
 ```
 
 ```bash
 # Test with invalid data types
-curl -X POST http://localhost:3000/api/lithic/webhook \
-  -H "Content-Type: application/json" \
-  -d '{"token": 123, "amount": "invalid"}'
+curl -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{\"token\": 123, \"amount\": \"invalid\"}"
 ```
 
-**Demo Point:** *"Our system has enterprise-grade validation that prevents malformed data from entering the system."*
+**Demo Point:** *"Our system has enterprise-grade validation that processes webhook data securely."*
 
 ---
 
@@ -90,9 +86,7 @@ curl -X POST http://localhost:3000/api/lithic/webhook \
 ### **2.1 Set Up AI Agent Connection**
 ```bash
 # Subscribe an AI agent to real-time alerts
-curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_test_123&sessionId=demo-session-001" \
-  -H "Authorization: Bearer demo-token" \
-  -H "Accept: text/event-stream"
+curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_test_123&sessionId=demo-session-001" -H "Authorization: Bearer demo-token" -H "Accept: text/event-stream"
 ```
 
 **Demo Point:** *"This endpoint establishes a real-time connection where AI agents receive instant notifications."*
@@ -100,13 +94,7 @@ curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_test_12
 ### **2.2 Test Alert Broadcasting**
 ```bash
 # Send a test alert (open new terminal window)
-curl -X POST http://localhost:3000/api/alerts/test \
-  -H "Content-Type: application/json" \
-  -d '{
-    "cardTokens": ["card_test_123"],
-    "alertType": "TEST_DEMO",
-    "message": "Demo alert for team presentation"
-  }'
+curl -X POST http://localhost:3000/api/alerts/test -H "Content-Type: application/json" -d "{\"cardTokens\": [\"card_test_123\"], \"alertType\": \"TEST_DEMO\", \"message\": \"Demo alert for team presentation\"}"
 ```
 
 **Expected:** The subscribed connection receives instant alert
@@ -137,16 +125,7 @@ curl http://localhost:3000/api/alerts/metrics
 ### **3.1 AI Agent Subscription**
 ```bash
 # Enhanced MCP subscription with multiple cards
-curl -X POST http://localhost:3000/api/vapi/subscribe \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "ai-agent-demo-001",
-    "cardTokens": ["card_demo_001", "card_demo_002"],
-    "agentConfig": {
-      "name": "FraudDetectionAgent",
-      "capabilities": ["scammer_verification", "pattern_analysis"]
-    }
-  }'
+curl -X POST http://localhost:3000/api/vapi/subscribe -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\", \"cardTokens\": [\"card_demo_001\", \"card_demo_002\"], \"agentConfig\": {\"name\": \"FraudDetectionAgent\", \"capabilities\": [\"scammer_verification\", \"pattern_analysis\"]}}"
 ```
 
 **Expected Response:**
@@ -165,16 +144,7 @@ curl -X POST http://localhost:3000/api/vapi/subscribe \
 ### **3.2 Natural Language Transaction Query**
 ```bash
 # Test AI-powered transaction analysis
-curl -X POST http://localhost:3000/api/vapi/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "ai-agent-demo-001",
-    "query": "Show me large transactions from today that might be suspicious",
-    "context": {
-      "scammerPhone": "+1-555-SCAMMER",
-      "verificationActive": true
-    }
-  }'
+curl -X POST http://localhost:3000/api/vapi/query -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\", \"query\": \"Show me large transactions from today that might be suspicious\", \"context\": {\"scammerPhone\": \"+1-555-SCAMMER\", \"verificationActive\": true}}"
 ```
 
 **Demo Point:** *"AI agents can ask natural language questions and get intelligent responses formatted for scammer verification."*
@@ -182,17 +152,7 @@ curl -X POST http://localhost:3000/api/vapi/query \
 ### **3.3 Scammer Verification Intelligence**
 ```bash
 # Get verification questions for scammer
-curl -X POST http://localhost:3000/api/vapi/verification \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "ai-agent-demo-001",
-    "transactionIds": ["txn_demo_123", "txn_demo_456"],
-    "scammerContext": {
-      "claimedLocation": "New York",
-      "claimedPurchase": "coffee",
-      "suspicionLevel": "high"
-    }
-  }'
+curl -X POST http://localhost:3000/api/vapi/verification -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\", \"transactionIds\": [\"txn_demo_123\", \"txn_demo_456\"], \"scammerContext\": {\"claimedLocation\": \"New York\", \"claimedPurchase\": \"coffee\", \"suspicionLevel\": \"high\"}}"
 ```
 
 **Expected Response:**
@@ -297,26 +257,7 @@ curl -X GET "http://localhost:3000/api/vapi/status?sessionId=ai-agent-demo-001"
 ### **5.1 Simulate Transaction Flow**
 ```bash
 # Simulate a scammer using a honeypot card
-curl -X POST http://localhost:3000/api/lithic/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event_type": "transaction.created",
-    "payload": {
-      "token": "txn_scammer_demo_001",
-      "card_token": "card_demo_001",
-      "amount": 100,
-      "descriptor": "STARBUCKS #1234",
-      "mcc": "5814",
-      "status": "APPROVED",
-      "created": "2025-01-30T14:30:00Z",
-      "merchant": {
-        "acceptor_id": "STARBUCKS1234",
-        "city": "SEATTLE",
-        "state": "WA",
-        "country": "USA"
-      }
-    }
-  }'
+curl -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{\"event_type\": \"transaction.created\", \"payload\": {\"token\": \"txn_scammer_demo_001\", \"card_token\": \"card_demo_001\", \"amount\": 100, \"descriptor\": \"STARBUCKS #1234\", \"mcc\": \"5814\", \"status\": \"APPROVED\", \"created\": \"2025-01-30T14:30:00Z\", \"merchant\": {\"acceptor_id\": \"STARBUCKS1234\", \"city\": \"SEATTLE\", \"state\": \"WA\", \"country\": \"USA\"}}}"
 ```
 
 **Demo Flow:**
@@ -359,12 +300,10 @@ The subscribed AI agent instantly receives:
 
 ### **6.1 Load Testing**
 ```bash
-# Test multiple simultaneous connections (PowerShell)
-for ($i=1; $i -le 5; $i++) {
-  Start-Job -ScriptBlock {
-    curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_load_test_$using:i&sessionId=load-test-$using:i" -H "Authorization: Bearer demo-token"
-  }
-}
+# Test multiple simultaneous connections (run each in separate terminal)
+curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_load_test_1&sessionId=load-test-1" -H "Authorization: Bearer demo-token"
+curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_load_test_2&sessionId=load-test-2" -H "Authorization: Bearer demo-token"
+curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_load_test_3&sessionId=load-test-3" -H "Authorization: Bearer demo-token"
 ```
 
 ### **6.2 Performance Metrics**
@@ -420,9 +359,7 @@ curl http://localhost:3000/api/alerts/metrics
 
 ```bash
 # Unsubscribe all test agents
-curl -X DELETE "http://localhost:3000/api/vapi/unsubscribe" \
-  -H "Content-Type: application/json" \
-  -d '{"sessionId": "ai-agent-demo-001"}'
+curl -X DELETE "http://localhost:3000/api/vapi/unsubscribe" -H "Content-Type: application/json" -d "{\"sessionId\": \"ai-agent-demo-001\"}"
 
 # Check final metrics
 curl http://localhost:3000/api/alerts/metrics
@@ -468,4 +405,29 @@ curl http://localhost:3000/api/alerts/metrics
 - **Audience**: Technical team members, stakeholders
 - **Key Message**: Production-ready fraud detection system that turns honeypot cards into intelligent scammer traps with real-time AI assistance
 
-**Final Result**: *A sophisticated fraud detection platform that enables instant scammer verification during live conversations.* 🚀 
+**Final Result**: *A sophisticated fraud detection platform that enables instant scammer verification during live conversations.* 🚀
+
+---
+
+## 💡 **Windows Command Tips**
+
+### **For Command Prompt (cmd):**
+- All commands above work as-is
+- Use double quotes for JSON data
+- No line continuations needed
+
+### **For PowerShell:**
+- Use `curl.exe` instead of `curl` to force real curl
+- Or use single-line commands as shown above
+- Example: `curl.exe -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{}"`
+
+### **For Better JSON Formatting:**
+```bash
+# Option 1: Use Python (if installed)
+curl http://localhost:3000/health | python -m json.tool
+
+# Option 2: Use PowerShell (native)
+curl http://localhost:3000/health | ConvertFrom-Json | ConvertTo-Json -Depth 10
+
+# Option 3: Copy output to VS Code and format with Shift+Alt+F
+``` 
