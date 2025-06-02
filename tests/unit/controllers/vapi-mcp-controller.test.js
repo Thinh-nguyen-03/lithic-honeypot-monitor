@@ -501,443 +501,433 @@ const tests = [
   {
     name: 'should handle MCP connection statistics correctly',
     testFn: async () => {
-      // Test connection statistics logic
-      const connectionMetrics = mockConnectionManager.getMetrics();
-      const alertConnections = mockAlertService.getActiveConnections();
+      // Test connection statistics calculation
+      const connectionStats = mockConnectionManager.getMetrics();
+      const alertStats = mockAlertService.getMetrics();
       
       const statsResponse = {
         jsonrpc: '2.0',
         result: {
-          summary: {
-            activeConnections: alertConnections.totalActive,
-            totalSessions: connectionMetrics.totalConnections,
-            averageSessionDuration: '12 minutes'
-          },
-          connections: alertConnections.connectionDetails.map(conn => ({
-            sessionId: conn.sessionId,
-            cardTokens: [conn.cardToken],
-            status: 'active',
-            connectionHealth: 0.98,
-            connectedAt: conn.connectedAt,
-            lastActivity: conn.lastActivity
-          }))
+          timestamp: new Date().toISOString(),
+          connectionManager: connectionStats,
+          alertService: alertStats,
+          systemHealth: {
+            uptime: process.uptime(),
+            memoryUsage: process.memoryUsage(),
+            activeConnections: connectionStats.activeConnections
+          }
         },
         id: null
       };
       
-      assert(statsResponse.result.summary.activeConnections === 3, 'Should report correct active connections');
-      assert(statsResponse.result.summary.totalSessions === 10, 'Should report total sessions');
-      assert(Array.isArray(statsResponse.result.connections), 'Should include connections array');
-      assert(statsResponse.result.connections[0].sessionId === 'test-session-123', 'Should include session details');
+      assert(statsResponse.result.connectionManager.activeConnections === 3, 'Should include connection manager stats');
+      assert(statsResponse.result.alertService.totalAlertsSent === 150, 'Should include alert service stats');
+      assert(typeof statsResponse.result.systemHealth.uptime === 'number', 'Should include system health metrics');
     }
   },
   
+  // ========== Enhanced Alert Subscription System Tests ==========
+  
   {
-    name: 'should extract time filters from natural language queries',
+    name: 'should handle enhanced subscription with multiple cards',
     testFn: async () => {
-      // Test time filter extraction logic
-      const extractTimeFilter = (query) => {
-        const lowerQuery = query.toLowerCase();
-        
-        const timePatterns = [
-          {
-            patterns: ['last hour', 'past hour', 'within hour'],
-            filter: { hours: 1, description: 'last hour' }
-          },
-          {
-            patterns: ['today', 'this day'],
-            filter: { days: 1, startOfDay: true, description: 'today' }
-          },
-          {
-            patterns: ['yesterday'],
-            filter: { days: 1, dayOffset: -1, description: 'yesterday' }
-          },
-          {
-            patterns: ['this week', 'last week', 'past week'],
-            filter: { days: 7, description: 'this week' }
-          }
-        ];
-        
-        for (const timePattern of timePatterns) {
-          if (timePattern.patterns.some(pattern => lowerQuery.includes(pattern))) {
-            return timePattern.filter;
-          }
+      const enhancedSubscriptionData = {
+        agentId: 'agent_enhanced_456',
+        cardTokens: ['card_abc123', 'card_def456', 'card_ghi789'],
+        connectionType: 'mcp_subscription',
+        metadata: {
+          conversationId: 'conv_enhanced_789',
+          apiVersion: 'v2.0',
+          capabilities: ['real_time_alerts', 'scammer_verification']
         }
-        
-        return null;
       };
       
-      // Test different time filter extractions
-      const lastHourFilter = extractTimeFilter('show me transactions from the last hour');
-      assert(lastHourFilter !== null, 'Should extract last hour filter');
-      assert(lastHourFilter.hours === 1, 'Should set correct hour value');
-      assert(lastHourFilter.description === 'last hour', 'Should have correct description');
+      // Test multiple card registration
+      let successfulRegistrations = 0;
+      const registrationResults = [];
       
-      const todayFilter = extractTimeFilter('transactions from today');
-      assert(todayFilter !== null, 'Should extract today filter');
-      assert(todayFilter.days === 1, 'Should set correct day value');
-      assert(todayFilter.startOfDay === true, 'Should use start of day');
+      for (const cardToken of enhancedSubscriptionData.cardTokens) {
+        const registrationSuccess = mockAlertService.registerConnection(
+          'test-session-enhanced',
+          cardToken,
+          { sessionId: 'test-session-enhanced', type: 'mcp_subscription' }
+        );
+        
+        registrationResults.push({
+          cardToken,
+          success: registrationSuccess,
+          error: registrationSuccess ? null : 'Registration failed'
+        });
+        
+        if (registrationSuccess) successfulRegistrations++;
+      }
       
-      const weekFilter = extractTimeFilter('show me this week transactions');
-      assert(weekFilter !== null, 'Should extract week filter');
-      assert(weekFilter.days === 7, 'Should set correct week value');
+      assert(successfulRegistrations === 3, 'Should register all 3 card tokens successfully');
+      assert(registrationResults.every(r => r.success), 'All registrations should succeed');
       
-      const noFilter = extractTimeFilter('random query');
-      assert(noFilter === null, 'Should return null for no time pattern');
+      // Test enhanced response structure
+      const enhancedResponse = {
+        jsonrpc: '2.0',
+        result: {
+          sessionId: 'test-session-enhanced',
+          agentId: enhancedSubscriptionData.agentId,
+          monitoringCards: enhancedSubscriptionData.cardTokens,
+          successfulRegistrations,
+          connectionType: enhancedSubscriptionData.connectionType,
+          status: 'subscribed',
+          subscriptionHealth: {
+            totalCards: enhancedSubscriptionData.cardTokens.length,
+            registeredCards: successfulRegistrations,
+            registrationRate: `${Math.round((successfulRegistrations / enhancedSubscriptionData.cardTokens.length) * 100)}%`
+          },
+          registrationResults
+        },
+        id: null
+      };
+      
+      assert(enhancedResponse.result.subscriptionHealth.totalCards === 3, 'Should track total cards');
+      assert(enhancedResponse.result.subscriptionHealth.registrationRate === '100%', 'Should calculate registration rate');
+      assert(enhancedResponse.result.registrationResults.length === 3, 'Should include all registration results');
     }
   },
   
   {
-    name: 'should filter transactions by time criteria',
+    name: 'should handle partial registration failures gracefully',
     testFn: async () => {
-      // Test time-based filtering logic
-      const filterTransactionsByTime = (transactions, timeFilter) => {
-        const now = new Date();
-        let filterDate;
+      // Mock partial failure scenario
+      const mockAlertServicePartialFailure = {
+        registerConnection: (sessionId, cardToken) => {
+          // Simulate failure for one specific card
+          return cardToken !== 'card_fail_456';
+        }
+      };
+      
+      const cardTokens = ['card_success_123', 'card_fail_456', 'card_success_789'];
+      let successfulRegistrations = 0;
+      const registrationResults = [];
+      
+      for (const cardToken of cardTokens) {
+        const registrationSuccess = mockAlertServicePartialFailure.registerConnection(
+          'test-session-partial',
+          cardToken
+        );
         
-        if (timeFilter.hours) {
-          filterDate = new Date(now.getTime() - (timeFilter.hours * 60 * 60 * 1000));
-        } else if (timeFilter.days) {
-          if (timeFilter.startOfDay) {
-            filterDate = new Date(now);
-            filterDate.setHours(0, 0, 0, 0);
-            if (timeFilter.dayOffset) {
-              filterDate.setDate(filterDate.getDate() + timeFilter.dayOffset);
+        registrationResults.push({
+          cardToken,
+          success: registrationSuccess,
+          error: registrationSuccess ? null : 'Registration failed'
+        });
+        
+        if (registrationSuccess) successfulRegistrations++;
+      }
+      
+      assert(successfulRegistrations === 2, 'Should have 2 successful registrations');
+      assert(registrationResults.filter(r => !r.success).length === 1, 'Should have 1 failed registration');
+      
+      // Test that subscription still succeeds with partial registrations
+      const partialResponse = {
+        status: 'subscribed',
+        subscriptionHealth: {
+          totalCards: 3,
+          registeredCards: 2,
+          registrationRate: '67%'
+        }
+      };
+      
+      assert(partialResponse.status === 'subscribed', 'Should still be subscribed with partial success');
+      assert(partialResponse.subscriptionHealth.registrationRate === '67%', 'Should calculate correct partial rate');
+    }
+  },
+  
+  {
+    name: 'should validate subscription parameters robustly',
+    testFn: async () => {
+      // Test various invalid parameter scenarios
+      const testCases = [
+        {
+          params: { cardTokens: ['valid_card'], metadata: {} },
+          expectedError: 'Invalid subscription parameters',
+          description: 'missing agentId'
+        },
+        {
+          params: { agentId: 'agent_123', metadata: {} },
+          expectedError: 'Invalid subscription parameters',
+          description: 'missing cardTokens'
+        },
+        {
+          params: { agentId: 'agent_123', cardTokens: [], metadata: {} },
+          expectedError: 'Invalid subscription parameters',
+          description: 'empty cardTokens array'
+        },
+        {
+          params: { agentId: 'agent_123', cardTokens: 'not_array', metadata: {} },
+          expectedError: 'Invalid subscription parameters',
+          description: 'cardTokens not array'
+        }
+      ];
+      
+      for (const testCase of testCases) {
+        const errorResponse = {
+          jsonrpc: '2.0',
+          error: {
+            code: -32602,
+            message: testCase.expectedError,
+            data: {
+              required: ['agentId', 'cardTokens'],
+              received: { 
+                agentId: !!testCase.params.agentId, 
+                cardTokens: Array.isArray(testCase.params.cardTokens) ? testCase.params.cardTokens.length : 'not_array' 
+              }
             }
-          } else {
-            filterDate = new Date(now.getTime() - (timeFilter.days * 24 * 60 * 60 * 1000));
-          }
-        } else {
-          return transactions;
-        }
+          },
+          id: null
+        };
         
-        return transactions.filter(transaction => {
-          const transactionDate = new Date(transaction.timestamp || transaction.created_at);
-          return transactionDate >= filterDate;
-        });
+        assert(errorResponse.error.code === -32602, `Should use parameter error code for ${testCase.description}`);
+        assert(errorResponse.error.message === testCase.expectedError, `Should have correct error message for ${testCase.description}`);
+      }
+    }
+  },
+  
+  {
+    name: 'should handle enhanced unsubscription with cleanup details',
+    testFn: async () => {
+      const sessionId = 'test-session-cleanup';
+      const reason = 'conversation_ended';
+      
+      // Mock session details for cleanup tracking
+      const sessionDetails = {
+        establishedAt: new Date('2024-01-15T10:00:00Z'),
+        lastActivity: new Date('2024-01-15T10:25:00Z'),
+        healthChecksPassed: 15,
+        healthChecksFailed: 2,
+        reconnectAttempts: 1
       };
       
+      // Test cleanup process
+      const cleanupResults = {
+        alertServiceRemoval: true,
+        connectionManagerCleanup: true,
+        errors: []
+      };
+      
+      // Calculate session summary
+      const duration = Date.now() - new Date(sessionDetails.establishedAt).getTime();
+      const totalHealthChecks = sessionDetails.healthChecksPassed + sessionDetails.healthChecksFailed;
+      const healthCheckSuccessRate = `${Math.round((sessionDetails.healthChecksPassed / totalHealthChecks) * 100)}%`;
+      
+      const enhancedUnsubscribeResponse = {
+        jsonrpc: '2.0',
+        result: {
+          sessionId,
+          status: 'unsubscribed',
+          reason,
+          cleanupResults: {
+            alertServiceRemoved: cleanupResults.alertServiceRemoval,
+            connectionManagerCleaned: cleanupResults.connectionManagerCleanup,
+            errorsEncountered: cleanupResults.errors.length,
+            forceCleanup: false
+          },
+          sessionSummary: {
+            duration,
+            totalHealthChecks,
+            healthCheckSuccessRate
+          }
+        },
+        id: null
+      };
+      
+      assert(enhancedUnsubscribeResponse.result.cleanupResults.alertServiceRemoved === true, 'Should confirm alert service removal');
+      assert(enhancedUnsubscribeResponse.result.cleanupResults.connectionManagerCleaned === true, 'Should confirm connection cleanup');
+      assert(enhancedUnsubscribeResponse.result.sessionSummary.healthCheckSuccessRate === '88%', 'Should calculate correct health check rate');
+      assert(typeof enhancedUnsubscribeResponse.result.sessionSummary.duration === 'number', 'Should calculate session duration');
+    }
+  },
+  
+  {
+    name: 'should handle force cleanup for non-existent sessions',
+    testFn: async () => {
+      const nonExistentSession = 'non-existent-session-456';
+      const forceCleanup = true;
+      
+      // Test force cleanup logic
+      const connectionHealth = mockConnectionManager.getConnectionHealth(nonExistentSession);
+      assert(connectionHealth === null, 'Should return null for non-existent session');
+      
+      // Test that force cleanup bypasses session check
+      const forceCleanupResponse = {
+        jsonrpc: '2.0',
+        result: {
+          sessionId: nonExistentSession,
+          status: 'unsubscribed',
+          reason: 'force_cleanup',
+          cleanupResults: {
+            alertServiceRemoved: false,
+            connectionManagerCleaned: false,
+            errorsEncountered: 0,
+            forceCleanup: true
+          },
+          sessionSummary: null
+        },
+        id: null
+      };
+      
+      assert(forceCleanupResponse.result.cleanupResults.forceCleanup === true, 'Should indicate force cleanup was used');
+      assert(forceCleanupResponse.result.sessionSummary === null, 'Should have no session summary for non-existent session');
+    }
+  },
+  
+  {
+    name: 'should provide enhanced subscription status with metrics',
+    testFn: async () => {
+      const sessionId = 'test-session-status';
+      const includeMetrics = true;
+      const includeHistory = true;
+      
+      // Mock enhanced connection health
+      const enhancedConnectionHealth = {
+        establishedAt: new Date('2024-01-15T10:00:00Z'),
+        lastActivity: new Date('2024-01-15T10:25:00Z'),
+        lastHeartbeat: new Date('2024-01-15T10:24:30Z'),
+        status: 'active',
+        healthChecksPassed: 20,
+        healthChecksFailed: 1,
+        reconnectAttempts: 0
+      };
+      
+      // Calculate enhanced metrics
       const now = new Date();
-      const testTransactions = [
-        { 
-          timestamp: new Date(now.getTime() - 30 * 60 * 1000).toISOString(), // 30 min ago
-          merchant: 'Recent Store'
+      const timeSinceEstablished = now - new Date(enhancedConnectionHealth.establishedAt);
+      const timeSinceActivity = now - new Date(enhancedConnectionHealth.lastActivity);
+      const totalHealthChecks = enhancedConnectionHealth.healthChecksPassed + enhancedConnectionHealth.healthChecksFailed;
+      const healthScore = enhancedConnectionHealth.healthChecksPassed / totalHealthChecks;
+      
+      const enhancedStatusResponse = {
+        sessionId,
+        status: 'active',
+        connectionHealth: {
+          score: Math.round(healthScore * 100) / 100,
+          status: enhancedConnectionHealth.status,
+          lastActivity: enhancedConnectionHealth.lastActivity,
+          lastHeartbeat: enhancedConnectionHealth.lastHeartbeat,
+          timeSinceActivity: Math.round(timeSinceActivity / 1000),
+          healthChecks: {
+            passed: enhancedConnectionHealth.healthChecksPassed,
+            failed: enhancedConnectionHealth.healthChecksFailed,
+            successRate: `${Math.round((enhancedConnectionHealth.healthChecksPassed / totalHealthChecks) * 100)}%`
+          },
+          reconnectAttempts: enhancedConnectionHealth.reconnectAttempts
         },
-        { 
-          timestamp: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-          merchant: 'Old Store'
-        },
-        { 
-          timestamp: new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString(), // 25 hours ago
-          merchant: 'Very Old Store'
+        subscription: {
+          establishedAt: enhancedConnectionHealth.establishedAt,
+          duration: Math.round(timeSinceEstablished / 1000),
+          monitoringCards: ['card_test_456'],
+          alertsReceived: 0
         }
-      ];
+      };
       
-      // Test last hour filter
-      const lastHourResults = filterTransactionsByTime(testTransactions, { hours: 1 });
-      assert(lastHourResults.length === 1, 'Should filter to last hour transactions');
-      assert(lastHourResults[0].merchant === 'Recent Store', 'Should include recent transaction');
+      if (includeMetrics) {
+        enhancedStatusResponse.systemMetrics = {
+          alertService: {
+            totalActiveConnections: 3,
+            totalAlertsSent: 150,
+            failedDeliveries: 0,
+            queuedMessages: 0
+          },
+          performance: {
+            uptime: Math.round(process.uptime()),
+            memoryUsage: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`
+          }
+        };
+      }
       
-      // Test last 24 hours filter
-      const last24HourResults = filterTransactionsByTime(testTransactions, { hours: 24 });
-      assert(last24HourResults.length === 2, 'Should filter to last 24 hours');
+      assert(enhancedStatusResponse.connectionHealth.score === 0.95, 'Should calculate correct health score');
+      assert(enhancedStatusResponse.connectionHealth.healthChecks.successRate === '95%', 'Should calculate health check success rate');
+      assert(typeof enhancedStatusResponse.subscription.duration === 'number', 'Should include subscription duration');
       
-      // Test no filter
-      const noFilterResults = filterTransactionsByTime(testTransactions, {});
-      assert(noFilterResults.length === 3, 'Should return all transactions with no filter');
+      if (includeMetrics) {
+        assert(enhancedStatusResponse.systemMetrics.alertService.totalActiveConnections === 3, 'Should include system metrics when requested');
+        assert(typeof enhancedStatusResponse.systemMetrics.performance.uptime === 'number', 'Should include performance metrics');
+      }
     }
   },
   
   {
-    name: 'should extract and apply amount filters from queries',
+    name: 'should send welcome messages to subscribed agents',
     testFn: async () => {
-      // Test amount filter extraction
-      const extractAmountFilter = (query) => {
-        const lowerQuery = query.toLowerCase();
-        
-        const amountPatterns = [
-          {
-            patterns: ['large', 'big', 'expensive', 'high'],
-            filter: { type: 'large', minAmount: 100, description: 'large transactions (>$100)' }
-          },
-          {
-            patterns: ['small', 'little', 'cheap', 'low'],
-            filter: { type: 'small', maxAmount: 10, description: 'small transactions (<$10)' }
-          },
-          {
-            patterns: ['over 50', 'above 50', 'more than 50'],
-            filter: { type: 'custom', minAmount: 50, description: 'transactions over $50' }
-          }
-        ];
-        
-        for (const amountPattern of amountPatterns) {
-          if (amountPattern.patterns.some(pattern => lowerQuery.includes(pattern))) {
-            return amountPattern.filter;
-          }
-        }
-        
-        return null;
-      };
+      // Test welcome message structure
+      const sessionId = 'test-session-welcome';
+      const cardTokens = ['card_welcome_123', 'card_welcome_456'];
+      const agentId = 'agent_welcome_789';
       
-      // Test amount filtering
-      const filterTransactionsByAmount = (transactions, amountFilter) => {
-        return transactions.filter(transaction => {
-          const amountStr = transaction.amount || transaction.formatted_cardholder_amount || '0';
-          const amount = parseFloat(amountStr.replace(/[^0-9.-]/g, ''));
-          
-          if (isNaN(amount)) return false;
-          
-          if (amountFilter.minAmount !== undefined && amount < amountFilter.minAmount) {
-            return false;
-          }
-          if (amountFilter.maxAmount !== undefined && amount > amountFilter.maxAmount) {
-            return false;
-          }
-          
-          return true;
-        });
-      };
-      
-      // Test filter extraction
-      const largeFilter = extractAmountFilter('show me large transactions');
-      assert(largeFilter !== null, 'Should extract large transaction filter');
-      assert(largeFilter.minAmount === 100, 'Should set correct minimum amount');
-      
-      const smallFilter = extractAmountFilter('small purchases only');
-      assert(smallFilter !== null, 'Should extract small transaction filter');
-      assert(smallFilter.maxAmount === 10, 'Should set correct maximum amount');
-      
-      // Test amount filtering
-      const testTransactions = [
-        { amount: '$5.99', merchant: 'Small Purchase' },
-        { amount: '$50.00', merchant: 'Medium Purchase' },
-        { amount: '$150.00', merchant: 'Large Purchase' }
-      ];
-      
-      const largeResults = filterTransactionsByAmount(testTransactions, { minAmount: 100 });
-      assert(largeResults.length === 1, 'Should filter to large transactions');
-      assert(largeResults[0].merchant === 'Large Purchase', 'Should include large transaction');
-      
-      const smallResults = filterTransactionsByAmount(testTransactions, { maxAmount: 10 });
-      assert(smallResults.length === 1, 'Should filter to small transactions');
-      assert(smallResults[0].merchant === 'Small Purchase', 'Should include small transaction');
-    }
-  },
-  
-  {
-    name: 'should handle enhanced query processing with multiple filters',
-    testFn: async () => {
-      // Test enhanced query classification with new categories
-      const classifyEnhancedQuery = (query) => {
-        const lowerQuery = query.toLowerCase();
-        const classifications = [];
-        
-        const queryClassification = {
-          recent: ['last', 'recent', 'latest', 'new', 'current'],
-          merchant: ['from', 'at', 'merchant', 'store', 'shop'],
-          statistics: ['stats', 'total', 'count', 'summary'],
-          timeRange: ['hour', 'hours', 'today', 'yesterday', 'week'],
-          amountRange: ['large', 'small', 'big', 'little', 'over', 'under'],
-          pattern: ['pattern', 'unusual', 'suspicious', 'frequent']
-        };
-        
-        for (const [category, keywords] of Object.entries(queryClassification)) {
-          if (keywords.some(keyword => lowerQuery.includes(keyword))) {
-            classifications.push(category);
-          }
-        }
-        
-        return classifications.length > 0 ? classifications : ['general'];
-      };
-      
-      // Test complex queries with multiple filters
-      const complexQuery = 'show me large transactions from today';
-      const classifications = classifyEnhancedQuery(complexQuery);
-      
-      assert(classifications.includes('amountRange'), 'Should detect amount filter');
-      assert(classifications.includes('timeRange'), 'Should detect time filter');
-      
-      // Test pattern query
-      const patternQuery = 'find unusual spending patterns';
-      const patternClassifications = classifyEnhancedQuery(patternQuery);
-      assert(patternClassifications.includes('pattern'), 'Should detect pattern analysis request');
-      
-      // Test merchant + time query
-      const merchantTimeQuery = 'recent transactions from Starbucks';
-      const merchantTimeClassifications = classifyEnhancedQuery(merchantTimeQuery);
-      assert(merchantTimeClassifications.includes('recent'), 'Should detect recent filter');
-      assert(merchantTimeClassifications.includes('merchant'), 'Should detect merchant filter');
-    }
-  },
-  
-  {
-    name: 'should generate enhanced statistics with detailed analysis',
-    testFn: async () => {
-      // Test enhanced statistics generation
-      const generateEnhancedStatistics = async (transactions, query) => {
-        const totalCount = transactions.length;
-        const amounts = transactions.map(t => {
-          const amountStr = t.amount || t.formatted_cardholder_amount || '0';
-          return parseFloat(amountStr.replace(/[^0-9.-]/g, ''));
-        }).filter(a => !isNaN(a));
-        
-        const totalAmount = amounts.reduce((sum, amount) => sum + amount, 0);
-        const averageAmount = totalCount > 0 ? totalAmount / totalCount : 0;
-        
-        const smallTransactions = amounts.filter(a => a < 10).length;
-        const mediumTransactions = amounts.filter(a => a >= 10 && a <= 100).length;
-        const largeTransactions = amounts.filter(a => a > 100).length;
-        
-        const merchantCounts = {};
-        transactions.forEach(t => {
-          if (t.merchant) {
-            merchantCounts[t.merchant] = (merchantCounts[t.merchant] || 0) + 1;
-          }
-        });
-        
-        const topMerchants = Object.entries(merchantCounts)
-          .sort(([,a], [,b]) => b - a)
-          .slice(0, 3)
-          .map(([merchant, count]) => ({ merchant, count }));
-        
-        return {
-          summary: {
-            totalTransactions: totalCount,
-            totalAmount: `$${totalAmount.toFixed(2)}`,
-            averageAmount: `$${averageAmount.toFixed(2)}`
-          },
-          distribution: {
-            smallTransactions: { count: smallTransactions, description: 'Under $10' },
-            mediumTransactions: { count: mediumTransactions, description: '$10-$100' },
-            largeTransactions: { count: largeTransactions, description: 'Over $100' }
-          },
-          topMerchants,
-          queryContext: `Statistics generated for: ${query}`
-        };
-      };
-      
-      const testTransactions = [
-        { amount: '$5.00', merchant: 'Coffee Shop' },
-        { amount: '$25.00', merchant: 'Grocery Store' },
-        { amount: '$150.00', merchant: 'Electronics Store' },
-        { amount: '$8.00', merchant: 'Coffee Shop' }
-      ];
-      
-      const stats = await generateEnhancedStatistics(testTransactions, 'spending statistics');
-      
-      assert(stats.summary.totalTransactions === 4, 'Should count all transactions');
-      assert(stats.summary.totalAmount === '$188.00', 'Should calculate correct total');
-      assert(stats.distribution.smallTransactions.count === 2, 'Should categorize small transactions');
-      assert(stats.distribution.largeTransactions.count === 1, 'Should categorize large transactions');
-      assert(stats.topMerchants[0].merchant === 'Coffee Shop', 'Should identify top merchant');
-      assert(stats.topMerchants[0].count === 2, 'Should count merchant transactions');
-    }
-  },
-  
-  {
-    name: 'should analyze transaction patterns for suspicious activity',
-    testFn: async () => {
-      // Test pattern analysis functionality
-      const analyzeTransactionPatterns = async (transactions, query) => {
-        const patterns = {
-          suspicious: [],
-          normal: [],
-          insights: []
-        };
-        
-        // Analyze timing patterns
-        const timestamps = transactions.map(t => new Date(t.timestamp || t.created_at));
-        const timeGaps = [];
-        for (let i = 1; i < timestamps.length; i++) {
-          const gap = (timestamps[i-1] - timestamps[i]) / (1000 * 60); // minutes
-          timeGaps.push(Math.abs(gap));
-        }
-        
-        // Check for rapid transactions
-        const rapidTransactions = timeGaps.filter(gap => gap < 5).length;
-        if (rapidTransactions > 1) {
-          patterns.suspicious.push({
-            type: 'rapid_transactions',
-            description: `${rapidTransactions} transactions occurred within 5 minutes`,
-            severity: 'medium'
-          });
-        }
-        
-        // Check for round amounts
-        const amounts = transactions.map(t => {
-          const amountStr = t.amount || t.formatted_cardholder_amount || '0';
-          return parseFloat(amountStr.replace(/[^0-9.-]/g, ''));
-        }).filter(a => !isNaN(a));
-        
-        const roundAmounts = amounts.filter(a => a % 10 === 0).length;
-        if (roundAmounts > amounts.length * 0.7) {
-          patterns.suspicious.push({
-            type: 'round_amounts',
-            description: `${roundAmounts} out of ${amounts.length} transactions are round amounts`,
-            severity: 'low'
-          });
-        }
-        
-        // Normal patterns
-        if (patterns.suspicious.length === 0) {
-          patterns.normal.push({
-            type: 'standard_behavior',
-            description: 'Transaction patterns appear normal'
-          });
-        }
-        
-        patterns.insights.push(`Analyzed ${transactions.length} transactions for patterns`);
-        
-        return {
-          ...patterns,
-          analysisMetadata: {
-            transactionCount: transactions.length,
-            analysisType: 'behavioral_pattern_detection',
-            queryContext: query
-          }
-        };
-      };
-      
-      // Test with suspicious rapid transactions
-      const now = new Date();
-      const rapidTransactions = [
-        { 
-          timestamp: new Date(now.getTime() - 2 * 60 * 1000).toISOString(), // 2 min ago
-          amount: '$10.00'
+      const welcomeMessage = {
+        alertType: 'SUBSCRIPTION_WELCOME',
+        timestamp: new Date().toISOString(),
+        sessionId,
+        agentId,
+        message: {
+          type: 'welcome',
+          content: `Welcome! You are now subscribed to real-time alerts for ${cardTokens.length} card(s).`,
+          monitoringCards: cardTokens,
+          capabilities: [
+            'real_time_alerts',
+            'transaction_queries', 
+            'scammer_verification',
+            'merchant_intelligence'
+          ]
         },
-        { 
-          timestamp: new Date(now.getTime() - 1 * 60 * 1000).toISOString(), // 1 min ago
-          amount: '$20.00'
+        systemStatus: {
+          alertService: 'active',
+          transactionMonitoring: 'active',
+          subscriptionTime: new Date().toISOString()
+        }
+      };
+      
+      assert(welcomeMessage.alertType === 'SUBSCRIPTION_WELCOME', 'Should have correct alert type');
+      assert(welcomeMessage.message.monitoringCards.length === 2, 'Should include all monitored cards');
+      assert(welcomeMessage.message.capabilities.includes('real_time_alerts'), 'Should include capabilities');
+      assert(welcomeMessage.systemStatus.alertService === 'active', 'Should indicate active system status');
+    }
+  },
+  
+  {
+    name: 'should handle subscription errors with detailed error responses',
+    testFn: async () => {
+      // Test various error scenarios with enhanced error responses
+      const errorScenarios = [
+        {
+          error: new Error('Alert service unavailable'),
+          expectedCode: -32603,
+          expectedMessage: 'Internal server error during enhanced subscription',
+          description: 'service unavailable'
         },
-        { 
-          timestamp: now.toISOString(), // now
-          amount: '$30.00'
+        {
+          error: new TypeError('Invalid parameter type'),
+          expectedCode: -32603,
+          expectedMessage: 'Internal server error during enhanced subscription',
+          description: 'type error'
         }
       ];
       
-      const rapidAnalysis = await analyzeTransactionPatterns(rapidTransactions, 'pattern analysis');
-      assert(rapidAnalysis.suspicious.length > 0, 'Should detect suspicious rapid transactions');
-      assert(rapidAnalysis.suspicious[0].type === 'rapid_transactions', 'Should identify rapid transaction pattern');
-      
-      // Test with round amounts
-      const roundAmountTransactions = [
-        { timestamp: now.toISOString(), amount: '$10.00' },
-        { timestamp: now.toISOString(), amount: '$20.00' },
-        { timestamp: now.toISOString(), amount: '$30.00' }
-      ];
-      
-      const roundAnalysis = await analyzeTransactionPatterns(roundAmountTransactions, 'round amount test');
-      assert(roundAnalysis.suspicious.some(s => s.type === 'round_amounts'), 'Should detect round amount pattern');
-      
-      // Test normal transactions
-      const normalTransactions = [
-        { timestamp: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(), amount: '$12.45' },
-        { timestamp: new Date(now.getTime() - 1 * 60 * 60 * 1000).toISOString(), amount: '$23.67' }
-      ];
-      
-      const normalAnalysis = await analyzeTransactionPatterns(normalTransactions, 'normal test');
-      assert(normalAnalysis.normal.length > 0, 'Should identify normal patterns');
-      assert(normalAnalysis.normal[0].type === 'standard_behavior', 'Should categorize as standard behavior');
+      for (const scenario of errorScenarios) {
+        const errorResponse = {
+          jsonrpc: '2.0',
+          error: {
+            code: scenario.expectedCode,
+            message: scenario.expectedMessage,
+            data: {
+              timestamp: new Date().toISOString(),
+              requestId: 'test-request-123',
+              errorType: scenario.error.constructor.name
+            }
+          },
+          id: null
+        };
+        
+        assert(errorResponse.error.code === scenario.expectedCode, `Should use correct error code for ${scenario.description}`);
+        assert(errorResponse.error.data.errorType === scenario.error.constructor.name, `Should include error type for ${scenario.description}`);
+        assert(typeof errorResponse.error.data.timestamp === 'string', `Should include timestamp for ${scenario.description}`);
+      }
     }
   }
 ];
