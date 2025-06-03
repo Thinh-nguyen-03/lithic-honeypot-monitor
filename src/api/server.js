@@ -88,43 +88,37 @@ const trackPerformance = (req, res, next) => {
 // Apply performance tracking middleware
 app.use(trackPerformance);
 
-// SSE Middleware Configuration
-// Configure proper SSE headers for all real-time endpoints
-const configureSSEMiddleware = (req, res, next) => {
-  // Set SSE headers for real-time endpoints
-  if (req.path.startsWith('/alerts/stream') || req.path.startsWith('/api/mcp/subscribe')) {
+// Consolidated Real-Time Middleware Configuration
+// Single middleware to handle all real-time endpoint configuration
+const configureRealTimeMiddleware = (req, res, next) => {
+  // Handle SSE endpoints (only for GET requests that establish SSE connections)
+  if ((req.path.startsWith('/alerts/stream') && req.method === 'GET') || 
+      (req.path.startsWith('/api/mcp/subscribe') && req.method === 'GET')) {
+    // SSE-specific headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
+    res.setHeader('Transfer-Encoding', 'chunked');
     
     // CORS headers for SSE
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Cache-Control, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Cache-Control, Authorization, Content-Type');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  }
-  next();
-};
-
-// Performance optimization for real-time endpoints
-const optimizeRealTime = (req, res, next) => {
-  // Disable compression for SSE endpoints
-  if (req.path.startsWith('/alerts/stream') || req.path.startsWith('/api/mcp/subscribe')) {
+    
+    // Optimization settings
     res.locals.skipCompression = true;
     
-    // Set optimal buffer size for streaming
-    res.setHeader('Transfer-Encoding', 'chunked');
+    // Set timeouts
+    req.setTimeout(300000); // 5 minutes
+    res.setTimeout(300000); // 5 minutes
     
-    // Disable response buffering
+    // Flush headers for streaming
     res.flushHeaders();
   }
-  next();
-};
-
-// Enhanced CORS configuration for real-time endpoints
-const configureCORS = (req, res, next) => {
-  // CORS configuration for all real-time endpoints
-  if (req.path.startsWith('/alerts/') || req.path.startsWith('/api/mcp/')) {
+  // Handle other real-time endpoints (including POST to /api/mcp/subscribe)
+  else if (req.path.startsWith('/alerts/') || req.path.startsWith('/api/mcp/')) {
+    // CORS configuration for real-time endpoints
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, mcp-session-id, Cache-Control');
@@ -138,10 +132,11 @@ const configureCORS = (req, res, next) => {
   next();
 };
 
-// Apply middleware in order
-app.use(configureSSEMiddleware);
-app.use(optimizeRealTime);
-app.use(configureCORS);
+// Apply consolidated middleware
+app.use(configureRealTimeMiddleware);
+
+// Middleware for parsing JSON request bodies for ALL routes (must come before route mounting)
+app.use(express.json({ limit: '10mb' }));
 
 // Handle preflight requests for CORS
 app.options('*', (req, res) => {
@@ -157,8 +152,8 @@ app.options('*', (req, res) => {
 // Real-time alert endpoints - mounted first for priority
 app.use("/alerts", alert_routes);
 
-// Vapi MCP server endpoints with JSON parsing
-app.use("/api/mcp", express.json({ limit: '10mb' }), vapi_mcp_routes);
+// Vapi MCP server endpoints (JSON parsing already applied globally above)
+app.use("/api/mcp", vapi_mcp_routes);
 
 // Webhook routes with raw body parsing for signature verification
 app.use(
@@ -166,9 +161,6 @@ app.use(
   express.raw({ type: "application/json" }),
   lithic_webhook_routes,
 );
-
-// Middleware for parsing JSON request bodies for other routes
-app.use(express.json());
 
 // Enhanced health check endpoint with real-time service metrics
 app.get("/health", async (req, res) => {

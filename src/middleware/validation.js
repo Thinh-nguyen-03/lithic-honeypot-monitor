@@ -128,6 +128,10 @@ function sanitizeInput(input) {
       .replace(/\*\//g, '')
       .trim();
   }
+  if (Array.isArray(input)) {
+    // Preserve arrays and sanitize each element
+    return input.map(item => sanitizeInput(item));
+  }
   if (typeof input === 'object' && input !== null) {
     const sanitized = {};
     for (const [key, value] of Object.entries(input)) {
@@ -302,6 +306,16 @@ export async function validateAlertRequest(req, res, next) {
   const startTime = Date.now();
   
   try {
+    // Check if headers have already been sent (from SSE middleware)
+    if (res.headersSent) {
+      logger.warn({
+        requestId,
+        path: req.path,
+        method: req.method
+      }, 'Headers already sent, skipping validation response');
+      return next();
+    }
+    
     // For SSE connections, data might come from query params
     const data = req.method === 'GET' ? req.query : req.body;
     
@@ -322,23 +336,42 @@ export async function validateAlertRequest(req, res, next) {
     if (error) {
       const field = error.details[0].path.join('.');
       logValidationError(requestId, 'alertSubscription', { message: error.details[0].message, field }, req);
-      return res.status(400).json(createErrorResponse(
-        error.details[0].message,
-        field,
-        400,
-        requestId
-      ));
+      
+      // Check again before sending response
+      if (!res.headersSent) {
+        return res.status(400).json(createErrorResponse(
+          error.details[0].message,
+          field,
+          400,
+          requestId
+        ));
+      } else {
+        logger.warn({
+          requestId,
+          error: error.details[0].message,
+          field
+        }, 'Validation failed but headers already sent');
+        return next(new Error(`Validation failed: ${error.details[0].message}`));
+      }
     }
     
     // Validate agent has permission for requested cards (semantic validation)
     // This is a placeholder - implement actual permission check based on your auth system
     if (value.cardTokens.length > 5 && !req.user?.isAdmin) {
-      return res.status(422).json(createErrorResponse(
-        'Agent not authorized to monitor more than 5 cards',
-        'cardTokens',
-        422,
-        requestId
-      ));
+      if (!res.headersSent) {
+        return res.status(422).json(createErrorResponse(
+          'Agent not authorized to monitor more than 5 cards',
+          'cardTokens',
+          422,
+          requestId
+        ));
+      } else {
+        logger.warn({
+          requestId,
+          cardCount: value.cardTokens.length
+        }, 'Authorization failed but headers already sent');
+        return next(new Error('Agent not authorized to monitor more than 5 cards'));
+      }
     }
     
     req.validatedData = value;
@@ -354,12 +387,22 @@ export async function validateAlertRequest(req, res, next) {
     next();
   } catch (err) {
     logger.error({ requestId, error: err.message, stack: err.stack }, 'Validation system error');
-    return res.status(500).json(createErrorResponse(
-      'Internal validation error',
-      'system',
-      500,
-      requestId
-    ));
+    
+    // Check before sending error response
+    if (!res.headersSent) {
+      return res.status(500).json(createErrorResponse(
+        'Internal validation error',
+        'system',
+        500,
+        requestId
+      ));
+    } else {
+      logger.error({
+        requestId,
+        error: err.message
+      }, 'Validation system error but headers already sent');
+      return next(err);
+    }
   }
 }
 

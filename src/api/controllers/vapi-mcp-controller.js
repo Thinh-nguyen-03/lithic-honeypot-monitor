@@ -238,6 +238,19 @@ export async function subscribeToAlerts(req, res) {
       }, 'Failed to send welcome message, but subscription is active');
     }
 
+    // Check if headers have already been sent (for SSE connections)
+    if (res.headersSent) {
+      logger.info({
+        requestId,
+        sessionId,
+        agentId,
+        cardTokens,
+        successfulRegistrations,
+        connectionType
+      }, 'Enhanced MCP alert subscription created successfully (SSE connection established)');
+      return; // Don't send JSON response for SSE connections
+    }
+
     // Enhanced MCP-compliant success response
     res.status(200).json({
       jsonrpc: '2.0',
@@ -268,6 +281,15 @@ export async function subscribeToAlerts(req, res) {
       stack: error.stack,
       duration
     }, 'Failed to create enhanced MCP alert subscription');
+
+    // Check if headers have already been sent before sending error response
+    if (res.headersSent) {
+      logger.error({
+        requestId,
+        error: error.message
+      }, 'Error occurred but headers already sent (SSE connection)');
+      return;
+    }
 
     res.status(500).json({
       jsonrpc: '2.0',
