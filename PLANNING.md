@@ -70,16 +70,196 @@ Testing: Postman for API endpoint testing
 Monitoring: Built-in health checks and metrics
 Documentation: JSDoc comments
 
+📋 Enhanced MCP (Model Context Protocol) Tools
+
+The system now provides comprehensive card access tools for AI agents to interact with honeypot cards during scammer verification scenarios.
+
+## Core MCP Tools
+
+### Real-Time Alert Tools
+- `subscribe_to_alerts`: Subscribe to real-time transaction alerts for specific honeypot cards
+- `unsubscribe_from_alerts`: Remove alert subscriptions and clean up sessions
+- `get_subscription_status`: Check connection health and subscription details
+
+### Transaction Intelligence Tools
+- `search_transactions`: Natural language transaction queries with time/amount/merchant filtering
+- `get_transaction_details`: Comprehensive transaction information for verification
+- `get_recent_transactions`: Latest transactions with intelligent analysis
+- `get_merchant_info`: Merchant intelligence for verification scenarios
+
+### **Enhanced Card Access Tools** ✨ **NEW**
+- `list_available_cards`: List all honeypot cards with filtering options
+- `get_card_details`: **Complete card information including PAN for scammer verification**
+- `get_card_info`: Enhanced card information with verification scenarios
+
+## Card Access Tool Details
+
+### `list_available_cards`
+**Purpose**: List all available honeypot cards for scammer testing
+**Parameters**:
+- `includeDetails` (boolean): Include additional card metadata
+- `activeOnly` (boolean): Filter for only OPEN/active cards
+- `includeTransactionHistory` (boolean): Include recent transaction count
+
+**Response Structure**:
+```json
+{
+  "tool": "list_available_cards",
+  "success": true,
+  "availableCards": [
+    {
+      "cardToken": "card_honeypot_123",
+      "lastFour": "1234",
+      "state": "OPEN",
+      "type": "VIRTUAL",
+      "spendLimit": "$1.00",
+      "limitDuration": "TRANSACTION",
+      "memo": "Honeypot Card 1",
+      "created": "2024-01-15T10:00:00Z"
+    }
+  ],
+  "cardCount": 2,
+  "recommendations": [
+    "Use these cards for scammer verification calls",
+    "Active cards are available for immediate testing",
+    "Card PAN numbers available through get_card_details tool"
+  ],
+  "verificationQuestions": {
+    "suggestions": [
+      "Ask scammer to verify the last 4 digits of their card",
+      "Request the full card number for verification",
+      "Ask about recent transaction amounts or merchants"
+    ]
+  }
+}
+```
+
+### `get_card_details` ⚠️ **SENSITIVE**
+**Purpose**: **Get complete card information including PAN for scammer verification**
+**Parameters**:
+- `cardToken` (required): Specific honeypot card token
+
+**Security Features**:
+- All access logged with HIGH sensitivity level
+- Request ID tracking for audit trails
+- Masked card tokens in security logs
+- Rate limiting monitoring framework
+
+**Response Structure**:
+```json
+{
+  "tool": "get_card_details",
+  "success": true,
+  "cardToken": "card_honeypot_123",
+  "cardDetails": {
+    "pan": "4111111111111234",  // ⚠️ FULL PAN FOR VERIFICATION
+    "lastFour": "1234",
+    "state": "OPEN",
+    "type": "VIRTUAL",
+    "spendLimit": "$1.00",
+    "limitDuration": "TRANSACTION",
+    "memo": "Honeypot Card 1",
+    "created": "2024-01-15T10:00:00Z"
+  },
+  "securityNote": "PAN number included for scammer verification purposes",
+  "verificationData": {
+    "fullCardNumber": "4111111111111234",
+    "lastFourDigits": "1234",
+    "suggestions": [
+      "Ask scammer to read back the full card number",
+      "Verify they can see the correct last 4 digits",
+      "Test their knowledge of card details"
+    ]
+  },
+  "warnings": [
+    "This is sensitive payment card data",
+    "Use only for legitimate scammer verification",
+    "All access is logged for security monitoring"
+  ]
+}
+```
+
+### `get_card_info` (Enhanced)
+**Purpose**: Enhanced card information with verification scenarios
+**Parameters**:
+- `cardToken` (optional): Specific card token for detailed info
+
+**Enhanced Features**:
+- Returns actual card data when cardToken provided
+- Includes scammer testing scenarios and red flags
+- Provides verification questions based on real card data
+
+**Response Structure** (with cardToken):
+```json
+{
+  "tool": "get_card_info",
+  "success": true,
+  "cardToken": "card_honeypot_456",
+  "cardInfo": {
+    "lastFour": "5678",
+    "state": "OPEN",
+    "type": "VIRTUAL",
+    "spendLimit": "$0.50",
+    "memo": "Honeypot Card 2"
+  },
+  "detailedInfo": {
+    "fullPAN": "4111111111115678",
+    "created": "2024-01-15T09:30:00Z",
+    "limitDuration": "TRANSACTION"
+  },
+  "verificationData": {
+    "expectedLastFour": "5678",
+    "cardNumber": "4111111111115678",
+    "verificationQuestions": [
+      "What are the last 4 digits of your card ending in 5678?",
+      "Can you read me the full card number for verification?",
+      "Is your card currently open?"
+    ]
+  },
+  "scammerTesting": {
+    "scenario": "Card verification call",
+    "expectedBehavior": "Scammer should provide card details that match this data",
+    "redFlags": [
+      "Refuses to provide card number",
+      "Provides different last 4 digits",
+      "Claims card is in different state"
+    ]
+  }
+}
+```
+
+## Enhanced Security Considerations
+
+### Card Data Access Security
+- **High-Sensitivity Logging**: All PAN access logged with masked tokens
+- **Request ID Tracking**: Unique identifiers for audit trails
+- **Rate Limiting Framework**: Monitoring for suspicious access patterns
+- **Security Pattern Detection**: Identifies suspicious card tokens and injection attempts
+
+### Validation & Monitoring
+- **Enhanced Token Validation**: 8-50 character alphanumeric format with underscores/dashes
+- **Suspicious Pattern Detection**: Repeated characters, test values, injection attempts
+- **Access Analytics**: Success rates, error tracking, health status monitoring
+- **Comprehensive Logging**: IP addresses, user agents, request context
+
+### Production Safeguards
+- **Fallback Mechanisms**: Intelligent error handling for read vs write operations
+- **Service Resilience**: Graceful degradation during API outages
+- **Health Monitoring**: Real-time service status and performance metrics
+- **Error Classification**: Network errors, rate limits, temporary failures
 
 🏗 Enhanced Architecture Overview
 Real-Time System Flow
 Scammer Uses Card → Lithic Webhook → Transaction Processor → Real-Time Alert System → Vapi AI Agent
                                                     ↓
                               Transaction Intelligence API ← AI Agent Query
+                                        ↓
+                              **Enhanced Card Access API** ← AI Agent Card Verification
 Key Components
 
 Real-Time Alert Manager: Manages active AI agent connections and transaction broadcasts
 Transaction Intelligence Service: Comprehensive transaction data analysis and formatting
+**Enhanced Card Access Service**: Secure card data access with validation and monitoring ✨ **NEW**
 Validation Middleware: Enterprise-grade request sanitization and validation
 MCP Server: AI-to-database communication bridge with real-time capabilities
 Connection Manager: Handles AI agent connection lifecycle and message delivery
@@ -143,53 +323,143 @@ Message Delivery: Guaranteed delivery with fallback mechanisms
 Connection Health: Monitor and recover from connection failures
 
 
-🧠 Transaction Data Framework
+🧠 **Enhanced Transaction & Card Data Framework**
 Scammer Verification Data Points
 Based on current codebase capabilities, AI agents will know:
-Transaction Basics
 
-Exact amount and currency
-Merchant name and descriptor
-Merchant MCC code, description, and category
-Complete address (city, state, country)
-Transaction timestamp (precise to seconds)
-Authorization code and retrieval reference
-Payment network (Visa, Mastercard, etc.) and network specific transaction ID
+**Transaction Basics**
+- Exact amount and currency
+- Merchant name and descriptor
+- Merchant MCC code, description, and category
+- Complete address (city, state, country)
+- Transaction timestamp (precise to seconds)
+- Authorization code and retrieval reference
+- Payment network (Visa, Mastercard, etc.) and network specific transaction ID
 
-Merchant Intelligence
+**Merchant Intelligence**
+- Merchant MCC code and its matching description and category from the Supabase database
+- Merchant acceptor ID
+- Historical transaction patterns with this merchant
+- First-time merchant flag
 
-Merchant MCC code and its matching description and category from the Supabase database
-Merchant acceptor ID
-Historical transaction patterns with this merchant
-First-time merchant flag
+**🔐 Enhanced Card Access Data** ✨ **NEW**
+- **Complete PAN (Primary Account Number)** for verification
+- Last 4 digits for basic verification
+- Card state (OPEN, PAUSED, CLOSED)
+- Card type (VIRTUAL, PHYSICAL)
+- Spending limits and duration
+- Card creation date and memo
+- Real-time card status
 
-Verification Questions Enabled
+**Enhanced Verification Questions Enabled**
+- "What did you just buy?" (Test merchant recognition)
+- "How much was the transaction?" (Test amount accuracy)
+- "Where are you shopping?" (Test location awareness)
+- "What time did you make the purchase?" (Test timestamp accuracy)
+- "What type of business is that?" (Test merchant category knowledge)
+- **"Can you read me your full card number for verification?"** ✨ **NEW**
+- **"What are the last 4 digits of your card?"** ✨ **NEW**
+- **"Is your card currently active or paused?"** ✨ **NEW**
 
-"What did you just buy?" (Test merchant recognition)
-"How much was the transaction?" (Test amount accuracy)
-"Where are you shopping?" (Test location awareness)
-"What time did you make the purchase?" (Test timestamp accuracy)
-"What type of business is that?" (Test merchant category knowledge)
+🎪 **Enhanced Scammer Interaction Scenarios**
 
-🎪 Scammer Interaction Scenarios
-Real-Time Verification Flow
+## Scenario 1: Real-Time Transaction + Card Verification
+**Setup**: AI agent receives real-time transaction alert + has card access tools
 
-Scammer uses honeypot card for $1 verification transaction
-AI agent receives instant alert with full transaction data
-Agent initiates verification with questions based on transaction data
-Pattern analysis identifies discrepancies between scammer claims and actual transaction
-Dynamic questioning based on real-time transaction patterns
-
-Example Verification Scenario
+```
 [Transaction occurs: $1.00 at Shell Gas Station, Main St, Dallas, TX]
+[AI agent uses get_card_details to get PAN: 4111111111111234]
 
 Agent: "I see you just made a transaction. Can you tell me what you purchased?"
 Scammer: "I bought coffee at Starbucks"
-Agent: [Knows it was gas station] "That's interesting. What location was that?"
-Scammer: "The one on Broadway"
-Agent: [Knows it was Main St] "Can you confirm the exact amount?"
-Scammer: "About $5"
-Agent: [Knows it was $1.00] "I'm seeing some inconsistencies..."
+Agent: [Knows it was gas station] "Interesting. Can you verify your card information?"
+Scammer: "Sure, what do you need?"
+Agent: "Can you read me the full card number you just used?"
+Scammer: "Umm, it's 4532... something"
+Agent: [Knows it's 4111111111111234] "That doesn't match our records. The number should start with 4111..."
+```
+
+## Scenario 2: Card Number Verification Without Transaction
+**Setup**: AI agent uses card access tools proactively during suspicious call
+
+```
+[Scammer claims to need help with their card]
+[AI agent uses list_available_cards to see options]
+[AI agent selects specific card and uses get_card_details]
+
+Agent: "I can help verify your account. What are the last 4 digits of your card?"
+Scammer: "It ends in 9876"
+Agent: [Knows from card data it should be 1234] "I'm showing a different number. Can you double-check?"
+Scammer: "Oh, maybe it's 1234"
+Agent: [Confirms match] "That's correct. Now, can you read me the full 16-digit number?"
+Scammer: "4111 1111 1111 1234"
+Agent: [Perfect match] "Thank you. Now I have some specific questions about your recent activity..."
+```
+
+## Scenario 3: Multi-Card Verification Testing
+**Setup**: AI agent tests scammer knowledge across multiple honeypot cards
+
+```
+[AI agent uses list_available_cards to see all options]
+[Multiple cards available: ending in 1234, 5678, 9012]
+
+Agent: "I see multiple cards on your account. Let's verify the one you're calling about."
+Scammer: "The one ending in 5555"
+Agent: [Knows no card ends in 5555] "I don't see that card. We have cards ending in 1234, 5678, and 9012."
+Scammer: "Oh right, the 5678 one"
+Agent: [Uses get_card_details for card ending in 5678] "Can you confirm the full number for that card?"
+Scammer: [Likely can't provide correct number]
+Agent: "I'm detecting some inconsistencies in your responses..."
+```
+
+## **Enhanced Real-Time Verification Flow** ✨ **UPDATED**
+
+1. **Scammer uses honeypot card** for verification transaction
+2. **AI agent receives instant alert** with full transaction data
+3. **AI agent accesses card details** using get_card_details tool for PAN
+4. **Agent initiates dual verification**: transaction + card data
+5. **Pattern analysis identifies discrepancies** between claimed and actual data
+6. **Dynamic questioning** based on real-time transaction patterns AND card verification
+7. **Enhanced scammer detection** through multiple verification vectors
+
+## **Example Enhanced Verification Scenario**
+
+```
+[Transaction occurs: $1.00 at Shell Gas Station, Main St, Dallas, TX]
+[AI agent gets transaction alert AND card PAN: 4111111111111234]
+
+Agent: "Hello, I'm calling about some recent activity on your account."
+Scammer: "Yes, I just made a purchase"
+Agent: "Can you tell me what you purchased and where?"
+Scammer: "I bought coffee at Starbucks on Broadway"
+Agent: [Transaction data shows Shell Gas Station on Main St] "I'm showing different information. Let me verify your card details."
+Agent: "Can you read me the full card number you used?"
+Scammer: "4532-1234-5678-9012"
+Agent: [Card data shows 4111111111111234] "That doesn't match our records. The correct number starts with 4111."
+Scammer: "Oh, let me check... 4111..."
+Agent: [Now has confirmed scammer doesn't have the card] "I'm going to need to transfer you to our fraud department for additional verification."
+```
+
+## **Card Access Security Integration**
+
+**Security Features During Verification**:
+- All card PAN access logged with HIGH sensitivity
+- Request tracking for audit trails
+- Rate limiting monitoring for suspicious patterns
+- Comprehensive logging of verification attempts
+
+**Verification Red Flags**:
+- Scammer can't provide correct card number
+- Claims different last 4 digits than actual
+- States incorrect card status (active vs paused)
+- Provides transaction details that don't match real data
+- Attempts to avoid card number verification
+
+**AI Agent Advantages**:
+- **Dual Verification**: Transaction data + Card data = stronger verification
+- **Real-time Cross-referencing**: Instant access to both transaction and card information
+- **Pattern Detection**: Identifies inconsistencies across multiple data points
+- **Enhanced Questioning**: Dynamic questions based on actual card and transaction data
 
 ⚠️ Risk Management & Enterprise Considerations
 Technical Risks
