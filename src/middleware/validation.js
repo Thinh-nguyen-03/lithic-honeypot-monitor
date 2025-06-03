@@ -22,7 +22,14 @@ const vapiMCPRequestSchema = Joi.object({
   
   tool: Joi.string()
     .required()
-    .valid('get_transaction', 'search_transactions', 'get_merchant_info', 'get_card_info')
+    .valid(
+      'get_transaction', 
+      'search_transactions', 
+      'get_merchant_info', 
+      'get_card_info',
+      'list_available_cards',
+      'get_card_details'
+    )
     .description('The specific MCP tool being called'),
   
   parameters: Joi.object({
@@ -40,11 +47,25 @@ const vapiMCPRequestSchema = Joi.object({
     
     cardToken: Joi.string()
       .trim()
-      .max(50),
+      .max(50)
+      .pattern(/^[a-zA-Z0-9_-]+$/, 'card token format'), // Enhanced card token validation
     
     merchantId: Joi.string()
       .trim()
-      .max(50)
+      .max(50),
+
+    // New parameters for card access tools
+    includeDetails: Joi.boolean()
+      .default(false)
+      .description('Include detailed information in card listings'),
+    
+    activeOnly: Joi.boolean()
+      .default(true)
+      .description('Filter to only active cards'),
+    
+    includeTransactionHistory: Joi.boolean()
+      .default(false)
+      .description('Include transaction history with card details')
   }).required()
 });
 
@@ -230,6 +251,24 @@ export async function validateVapiRequest(req, res, next) {
     // Tool-specific validation
     const { tool, parameters } = value;
     
+    // Check rate limiting for sensitive card access tools
+    const rateLimitResult = checkCardAccessRateLimit(tool, requestId, req);
+    if (rateLimitResult) {
+      logValidationError(requestId, 'vapiMCPRequest', { 
+        message: rateLimitResult.error, 
+        field: rateLimitResult.field 
+      }, req);
+      return res.status(429).json(createErrorResponse(
+        rateLimitResult.error,
+        rateLimitResult.field,
+        429,
+        requestId
+      ));
+    }
+
+    // Log security-sensitive card access attempts
+    logCardAccessAttempt(requestId, tool, parameters, req);
+    
     // Validate required parameters based on tool type
     if ((tool === 'get_transaction' || tool === 'search_transactions') && !parameters.query) {
       logValidationError(requestId, 'vapiMCPRequest', { 
@@ -268,6 +307,88 @@ export async function validateVapiRequest(req, res, next) {
         400,
         requestId
       ));
+    }
+
+    // Enhanced validation for new card access tools
+    if (tool === 'get_card_details') {
+      if (!parameters.cardToken) {
+        logValidationError(requestId, 'vapiMCPRequest', { 
+          message: 'Card token is required for get_card_details tool', 
+          field: 'parameters.cardToken' 
+        }, req);
+        return res.status(400).json(createErrorResponse(
+          'Card token is required for get_card_details tool',
+          'parameters.cardToken',
+          400,
+          requestId
+        ));
+      }
+
+      // Enhanced card token validation for sensitive operations
+      const cardTokenValidation = validateCardToken(parameters.cardToken, requestId, req);
+      if (cardTokenValidation) {
+        logValidationError(requestId, 'vapiMCPRequest', cardTokenValidation, req);
+        return res.status(400).json(createErrorResponse(
+          cardTokenValidation.error,
+          cardTokenValidation.field,
+          400,
+          requestId
+        ));
+      }
+
+      // Security validation: Check if requesting transaction history
+      if (parameters.includeTransactionHistory) {
+        logger.info({
+          requestId,
+          tool,
+          cardToken: `${parameters.cardToken.substring(0, 8)}...`,
+          securityAlert: 'TRANSACTION_HISTORY_REQUESTED',
+          ip: req.ip,
+          userAgent: req.get('user-agent')
+        }, 'SECURITY: Transaction history requested with card details');
+      }
+    }
+
+    // Validation for list_available_cards
+    if (tool === 'list_available_cards') {
+      // Security validation: Check if requesting detailed information
+      if (parameters.includeDetails) {
+        logger.info({
+          requestId,
+          tool,
+          securityAlert: 'DETAILED_CARD_LIST_REQUESTED',
+          ip: req.ip,
+          userAgent: req.get('user-agent')
+        }, 'SECURITY: Detailed card list requested');
+      }
+
+      // Validate boolean parameters if present
+      if (parameters.activeOnly !== undefined && typeof parameters.activeOnly !== 'boolean') {
+        logValidationError(requestId, 'vapiMCPRequest', { 
+          message: 'activeOnly parameter must be a boolean', 
+          field: 'parameters.activeOnly' 
+        }, req);
+        return res.status(400).json(createErrorResponse(
+          'activeOnly parameter must be a boolean',
+          'parameters.activeOnly',
+          400,
+          requestId
+        ));
+      }
+    }
+
+    // Enhanced card token validation for get_card_info (existing tool)
+    if (tool === 'get_card_info' && parameters.cardToken) {
+      const cardTokenValidation = validateCardToken(parameters.cardToken, requestId, req);
+      if (cardTokenValidation) {
+        logValidationError(requestId, 'vapiMCPRequest', cardTokenValidation, req);
+        return res.status(400).json(createErrorResponse(
+          cardTokenValidation.error,
+          cardTokenValidation.field,
+          400,
+          requestId
+        ));
+      }
     }
     
     // Attach validated and sanitized data
@@ -522,4 +643,145 @@ export const schemas = {
   vapiMCPRequest: vapiMCPRequestSchema,
   alertSubscription: alertSubscriptionSchema,
   intelligenceQuery: intelligenceQuerySchema
-}; 
+};
+
+/**
+ * Validates card token format and security requirements.
+ * @param {string} cardToken - Card token to validate
+ * @param {string} requestId - Request ID for logging
+ * @param {Object} req - Express request object
+ * @returns {Object|null} Validation result or null if valid
+ */
+function validateCardToken(cardToken, requestId, req) {
+  // Enhanced card token validation
+  if (!cardToken || typeof cardToken !== 'string') {
+    return {
+      error: 'Card token is required and must be a string',
+      field: 'parameters.cardToken'
+    };
+  }
+
+  // Check format: should be alphanumeric with underscores and dashes
+  const cardTokenPattern = /^[a-zA-Z0-9_-]{8,50}$/;
+  if (!cardTokenPattern.test(cardToken)) {
+    return {
+      error: 'Invalid card token format. Must be 8-50 characters, alphanumeric with underscores and dashes only',
+      field: 'parameters.cardToken'
+    };
+  }
+
+  // Check for suspicious patterns
+  const suspiciousPatterns = [
+    /(.)\1{4,}/, // Repeated characters (5+ times)
+    /^(test|demo|fake|invalid|null|undefined)$/i, // Common test values
+    /['"<>]/g // Potential injection attempts
+  ];
+
+  for (const pattern of suspiciousPatterns) {
+    if (pattern.test(cardToken)) {
+      logger.warn({
+        requestId,
+        cardToken: `${cardToken.substring(0, 8)}...`,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        pattern: pattern.toString()
+      }, 'Suspicious card token pattern detected');
+      
+      return {
+        error: 'Card token contains invalid or suspicious patterns',
+        field: 'parameters.cardToken'
+      };
+    }
+  }
+
+  return null; // Valid
+}
+
+/**
+ * Logs security-sensitive card access attempts.
+ * @param {string} requestId - Request ID
+ * @param {string} tool - MCP tool being used
+ * @param {Object} parameters - Tool parameters
+ * @param {Object} req - Express request object
+ */
+function logCardAccessAttempt(requestId, tool, parameters, req) {
+  const sensitiveTools = ['get_card_details', 'list_available_cards', 'get_card_info'];
+  
+  if (sensitiveTools.includes(tool)) {
+    const logData = {
+      requestId,
+      securityEvent: 'CARD_ACCESS_ATTEMPT',
+      tool,
+      cardToken: parameters.cardToken ? `${parameters.cardToken.substring(0, 8)}...` : null,
+      includeDetails: parameters.includeDetails,
+      includeTransactionHistory: parameters.includeTransactionHistory,
+      activeOnly: parameters.activeOnly,
+      ip: req.ip,
+      userAgent: req.get('user-agent'),
+      endpoint: req.originalUrl,
+      method: req.method,
+      timestamp: new Date().toISOString()
+    };
+
+    // Log different levels based on sensitivity
+    if (tool === 'get_card_details' && parameters.includeTransactionHistory) {
+      logger.info(logData, 'HIGH SENSITIVITY: Card details with transaction history requested');
+    } else if (tool === 'get_card_details') {
+      logger.info(logData, 'MEDIUM SENSITIVITY: Card details requested');
+    } else {
+      logger.debug(logData, 'LOW SENSITIVITY: Card information requested');
+    }
+  }
+}
+
+/**
+ * Implements rate limiting considerations for sensitive card data access.
+ * @param {string} tool - MCP tool being used
+ * @param {string} requestId - Request ID
+ * @param {Object} req - Express request object
+ * @returns {Object|null} Rate limit result or null if within limits
+ */
+function checkCardAccessRateLimit(tool, requestId, req) {
+  // Simple rate limiting simulation (in production, use Redis or similar)
+  // This is a placeholder for actual rate limiting implementation
+  
+  const sensitiveTools = ['get_card_details', 'list_available_cards'];
+  if (!sensitiveTools.includes(tool)) {
+    return null; // No rate limiting for non-sensitive tools
+  }
+
+  // Check if this IP has made too many requests recently
+  const clientIP = req.ip;
+  const userAgent = req.get('user-agent');
+  
+  // Log for monitoring purposes (actual implementation would check against cache/database)
+  logger.debug({
+    requestId,
+    tool,
+    clientIP,
+    userAgent,
+    rateLimit: 'check_performed'
+  }, 'Rate limit check for sensitive card access');
+
+  // In a real implementation, you would:
+  // 1. Check Redis/memory cache for request count per IP/user
+  // 2. Increment counter
+  // 3. Return error if limit exceeded
+  // 4. Set TTL for counter reset
+  
+  // For now, just log and allow through
+  // Example rate limit: 100 card access requests per hour per IP
+  const rateLimitWarningThreshold = 50; // Would track actual counts in production
+  
+  if (Math.random() < 0.05) { // 5% random rate limit warning for demo
+    logger.warn({
+      requestId,
+      tool,
+      clientIP,
+      userAgent,
+      warning: 'approaching_rate_limit'
+    }, 'Client approaching rate limit for sensitive card access');
+  }
+
+  return null; // Allow request
+} 

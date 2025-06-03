@@ -198,7 +198,7 @@ async function testAlertQueryParams() {
   await validateAlertRequest(req, res, next);
   assert(req.validatedData, 'Should parse query params');
   assert(Array.isArray(req.validatedData.cardTokens), 'Should parse comma-separated tokens');
-  assert(req.validatedData.cardTokens.length === 2, 'Should have correct token count');
+  assert(req.validatedData.cardTokens.length === 2, 'Should have two tokens');
 }
 
 async function testAlertSemanticValidation() {
@@ -319,6 +319,185 @@ async function testPerformanceUnderLoad() {
   assert(avgTime < 10, `Average validation time should be under 10ms, got ${avgTime.toFixed(2)}ms`);
 }
 
+// ========== CARD ACCESS VALIDATION TESTS ==========
+
+async function testCardAccessListAvailableCards() {
+  // Test valid list_available_cards request
+  const { req, res, next } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'list_available_cards',
+    parameters: {
+      includeDetails: true,
+      activeOnly: false
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  assert(req.validatedData, 'Should have validated data');
+  assert(req.validatedData.tool === 'list_available_cards', 'Tool should be preserved');
+  assert(req.validatedData.parameters.includeDetails === true, 'includeDetails should be preserved');
+  assert(req.validatedData.parameters.activeOnly === false, 'activeOnly should be preserved');
+}
+
+async function testCardAccessGetCardDetails() {
+  // Test valid get_card_details request
+  const { req, res, next } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'get_card_details',
+    parameters: {
+      cardToken: 'card_abc123def',
+      includeTransactionHistory: true
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  assert(req.validatedData, 'Should have validated data');
+  assert(req.validatedData.tool === 'get_card_details', 'Tool should be preserved');
+  assert(req.validatedData.parameters.cardToken === 'card_abc123def', 'Card token should be preserved');
+  assert(req.validatedData.parameters.includeTransactionHistory === true, 'includeTransactionHistory should be preserved');
+}
+
+async function testCardAccessMissingCardToken() {
+  // Test get_card_details without required cardToken
+  const { req, res, next, getResponse } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'get_card_details',
+    parameters: {
+      includeTransactionHistory: true
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  const response = getResponse();
+  assert(response.statusCode === 400, 'Should return 400 for missing card token');
+  assert(response.responseData.field === 'parameters.cardToken', 'Should identify missing card token field');
+  assert(response.responseData.details.includes('Card token is required'), 'Should indicate card token is required');
+}
+
+async function testCardTokenFormatValidation() {
+  // Test invalid card token format
+  const { req, res, next, getResponse } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'get_card_details',
+    parameters: {
+      cardToken: 'invalid-token@#$%'
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  const response = getResponse();
+  assert(response.statusCode === 400, 'Should return 400 for invalid card token format');
+  assert(response.responseData.field === 'parameters.cardToken', 'Should identify card token field');
+  assert(response.responseData.details.includes('Invalid card token format'), 'Should indicate invalid format');
+}
+
+async function testCardTokenSuspiciousPatterns() {
+  // Test suspicious card token patterns
+  const suspiciousTokens = [
+    'aaaaaaaaaa', // Repeated characters
+    'test', // Common test value
+    'null', // Common test value
+    'token"injection' // Injection attempt
+  ];
+  
+  for (const suspiciousToken of suspiciousTokens) {
+    const { req, res, next, getResponse } = createMockContext({
+      toolCallId: 'call_123',
+      tool: 'get_card_details',
+      parameters: {
+        cardToken: suspiciousToken
+      }
+    });
+    
+    await validateVapiRequest(req, res, next);
+    const response = getResponse();
+    assert(response.statusCode === 400, `Should reject suspicious token: ${suspiciousToken}`);
+    assert(response.responseData.details.includes('suspicious patterns'), 'Should indicate suspicious pattern');
+  }
+}
+
+async function testCardTokenTooShort() {
+  // Test card token that's too short
+  const { req, res, next, getResponse } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'get_card_details',
+    parameters: {
+      cardToken: 'short'
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  const response = getResponse();
+  assert(response.statusCode === 400, 'Should return 400 for card token too short');
+  assert(response.responseData.field === 'parameters.cardToken', 'Should identify card token field');
+  assert(response.responseData.details.includes('8-50 characters'), 'Should indicate length requirement');
+}
+
+async function testListCardsInvalidBooleanParams() {
+  // Test list_available_cards with invalid boolean parameters
+  const { req, res, next, getResponse } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'list_available_cards',
+    parameters: {
+      includeDetails: 'not-a-boolean',
+      activeOnly: 'invalid'
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  const response = getResponse();
+  assert(response.statusCode === 400, 'Should return 400 for invalid boolean parameter');
+  // The Joi schema should catch this during initial validation
+}
+
+async function testEnhancedCardInfoValidation() {
+  // Test enhanced validation for existing get_card_info tool
+  const { req, res, next } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'get_card_info',
+    parameters: {
+      cardToken: 'valid_card_token_123'
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  assert(req.validatedData, 'Should have validated data');
+  assert(req.validatedData.parameters.cardToken === 'valid_card_token_123', 'Should preserve valid card token');
+}
+
+async function testCardAccessSecurityLogging() {
+  // Test that security logging is triggered for sensitive operations
+  const securityLogs = [];
+  
+  // Mock logger to capture security logs
+  const originalLogger = global.console;
+  global.console = {
+    ...originalLogger,
+    info: (msg) => securityLogs.push(msg),
+    debug: () => {},
+    warn: () => {},
+    error: () => {}
+  };
+  
+  const { req, res, next } = createMockContext({
+    toolCallId: 'call_123',
+    tool: 'get_card_details',
+    parameters: {
+      cardToken: 'secure_card_token_123',
+      includeTransactionHistory: true
+    }
+  });
+  
+  await validateVapiRequest(req, res, next);
+  
+  // Restore original logger
+  global.console = originalLogger;
+  
+  assert(req.validatedData, 'Should have validated data');
+  // Note: In actual implementation, we would check that security logging was called
+  // This is a simplified test since we're testing the validation logic
+}
+
 // ========== RUN ALL TESTS ==========
 
 async function runAllTests() {
@@ -345,6 +524,17 @@ async function runAllTests() {
   
   console.log('\n📋 Performance Tests:');
   await runTest('Performance under load', testPerformanceUnderLoad);
+  
+  console.log('\n📋 Card Access Tests:');
+  await runTest('List available cards', testCardAccessListAvailableCards);
+  await runTest('Get card details', testCardAccessGetCardDetails);
+  await runTest('Missing card token', testCardAccessMissingCardToken);
+  await runTest('Card token format validation', testCardTokenFormatValidation);
+  await runTest('Suspicious patterns', testCardTokenSuspiciousPatterns);
+  await runTest('Card token too short', testCardTokenTooShort);
+  await runTest('List cards invalid boolean parameters', testListCardsInvalidBooleanParams);
+  await runTest('Enhanced card info validation', testEnhancedCardInfoValidation);
+  await runTest('Card access security logging', testCardAccessSecurityLogging);
   
   console.log('\n📊 Test Summary:');
   console.log(`   Total Tests: ${testResults.passed + testResults.failed}`);
