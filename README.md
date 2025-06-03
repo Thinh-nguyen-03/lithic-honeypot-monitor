@@ -318,6 +318,206 @@ Sends test alert to connected agents (development only).
 #### **GET /health**
 System health check with service status.
 
+### **🔐 Enhanced Card Access API** ✨ **NEW**
+
+#### **POST /api/mcp/list_available_cards**
+List all honeypot cards available for scammer verification.
+
+**Request Body:**
+```json
+{
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+  "tool": "list_available_cards",
+  "parameters": {
+    "includeDetails": true,
+    "activeOnly": false,
+    "includeTransactionHistory": false
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "tool": "list_available_cards",
+    "success": true,
+    "availableCards": [
+      {
+        "cardToken": "card_honeypot_123",
+        "lastFour": "1234",
+        "state": "OPEN",
+        "type": "VIRTUAL",
+        "spendLimit": "$1.00",
+        "limitDuration": "TRANSACTION",
+        "memo": "Honeypot Card 1",
+        "created": "2024-01-15T10:00:00Z"
+      }
+    ],
+    "cardCount": 2,
+    "recommendations": [
+      "Use these cards for scammer verification calls",
+      "Card PAN numbers available through get_card_details tool"
+    ]
+  },
+  "id": null
+}
+```
+
+#### **POST /api/mcp/get_card_details** ⚠️ **SENSITIVE**
+Get complete card information including PAN for scammer verification.
+
+**Request Body:**
+```json
+{
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+  "tool": "get_card_details",
+  "parameters": {
+    "cardToken": "card_honeypot_123"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "tool": "get_card_details",
+    "success": true,
+    "cardToken": "card_honeypot_123",
+    "cardDetails": {
+      "pan": "4111111111111234",
+      "lastFour": "1234",
+      "state": "OPEN",
+      "type": "VIRTUAL",
+      "spendLimit": "$1.00",
+      "limitDuration": "TRANSACTION",
+      "memo": "Honeypot Card 1",
+      "created": "2024-01-15T10:00:00Z"
+    },
+    "securityNote": "PAN number included for scammer verification purposes",
+    "verificationData": {
+      "fullCardNumber": "4111111111111234",
+      "lastFourDigits": "1234",
+      "suggestions": [
+        "Ask scammer to read back the full card number",
+        "Verify they can see the correct last 4 digits"
+      ]
+    },
+    "warnings": [
+      "This is sensitive payment card data",
+      "Use only for legitimate scammer verification",
+      "All access is logged for security monitoring"
+    ]
+  },
+  "id": null
+}
+```
+
+#### **POST /api/mcp/get_card_info** (Enhanced)
+Enhanced card information with verification scenarios.
+
+**Request Body (with cardToken):**
+```json
+{
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+  "tool": "get_card_info",
+  "parameters": {
+    "cardToken": "card_honeypot_456"
+  }
+}
+```
+
+**Response (Enhanced with Card Data):**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "tool": "get_card_info",
+    "success": true,
+    "cardToken": "card_honeypot_456",
+    "cardInfo": {
+      "lastFour": "5678",
+      "state": "OPEN",
+      "type": "VIRTUAL",
+      "spendLimit": "$0.50",
+      "memo": "Honeypot Card 2"
+    },
+    "detailedInfo": {
+      "fullPAN": "4111111111115678",
+      "created": "2024-01-15T09:30:00Z",
+      "limitDuration": "TRANSACTION"
+    },
+    "verificationData": {
+      "expectedLastFour": "5678",
+      "cardNumber": "4111111111115678",
+      "verificationQuestions": [
+        "What are the last 4 digits of your card ending in 5678?",
+        "Can you read me the full card number for verification?"
+      ]
+    },
+    "scammerTesting": {
+      "scenario": "Card verification call",
+      "expectedBehavior": "Scammer should provide card details that match this data",
+      "redFlags": [
+        "Refuses to provide card number",
+        "Provides different last 4 digits"
+      ]
+    }
+  },
+  "id": null
+}
+```
+
+### **🛡️ Card Access Security**
+
+#### **Security Features**
+- **High-Sensitivity Logging**: All PAN access logged with masked tokens
+- **Request ID Tracking**: Unique identifiers for complete audit trails
+- **Rate Limiting Framework**: Monitoring for suspicious access patterns
+- **Enhanced Validation**: 8-50 character alphanumeric tokens with pattern detection
+
+#### **Security Headers Required**
+```
+Authorization: Bearer <session_token>
+Content-Type: application/json
+mcp-session-id: <session_uuid>
+```
+
+#### **Error Responses**
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32001,
+    "message": "Card not found",
+    "data": {
+      "cardToken": "invalid_token",
+      "errorType": "CARD_NOT_FOUND",
+      "suggestions": [
+        "Verify the card token is correct",
+        "Use list_available_cards to see valid tokens"
+      ]
+    }
+  },
+  "id": null
+}
+```
+
+### **Alert System Endpoints**
+
+#### **GET /api/alerts/stream/:cardToken**
+Establishes SSE connection for real-time transaction alerts.
+
+**Query Parameters:**
+- `agentId` (required): Unique AI agent identifier
+- `sessionId` (optional): Session tracking identifier
+
+**Headers:**
+- `Authorization: Bearer <session_token>`
+
 ---
 
 ## 🧪 **Testing**
