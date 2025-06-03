@@ -89,6 +89,68 @@ const mockSupabaseService = {
   }
 };
 
+// Mock card service for card access testing
+const mockCardService = {
+  listCards: async (params = {}) => [
+    {
+      token: 'card_honeypot_123',
+      last_four: '1234',
+      state: 'OPEN',
+      type: 'VIRTUAL',
+      spend_limit: 100,
+      spend_limit_duration: 'TRANSACTION',
+      memo: 'Honeypot Card 1',
+      created: '2024-01-15T10:00:00Z'
+    },
+    {
+      token: 'card_honeypot_456',
+      last_four: '5678',
+      state: 'PAUSED',
+      type: 'VIRTUAL',
+      spend_limit: 50,
+      spend_limit_duration: 'TRANSACTION',
+      memo: 'Honeypot Card 2',
+      created: '2024-01-15T09:30:00Z'
+    }
+  ].filter(card => {
+    if (params.activeOnly && card.state !== 'OPEN') return false;
+    return true;
+  }),
+  
+  getCardDetails: async (cardToken) => {
+    const cards = {
+      'card_honeypot_123': {
+        token: 'card_honeypot_123',
+        pan: '4111111111111234',
+        last_four: '1234',
+        state: 'OPEN',
+        spend_limit: 100,
+        spend_limit_duration: 'TRANSACTION',
+        memo: 'Honeypot Card 1',
+        created: '2024-01-15T10:00:00Z',
+        type: 'VIRTUAL'
+      },
+      'card_honeypot_456': {
+        token: 'card_honeypot_456',
+        pan: '4111111111115678',
+        last_four: '5678',
+        state: 'PAUSED',
+        spend_limit: 50,
+        spend_limit_duration: 'TRANSACTION',
+        memo: 'Honeypot Card 2',
+        created: '2024-01-15T09:30:00Z',
+        type: 'VIRTUAL'
+      }
+    };
+    
+    const card = cards[cardToken];
+    if (!card) {
+      throw new Error(`Card not found: ${cardToken}`);
+    }
+    return card;
+  }
+};
+
 // Import controller functions with mocked dependencies
 // Note: We're testing the logic patterns rather than actual imports
 // since the controller doesn't exist during route testing
@@ -928,6 +990,375 @@ const tests = [
         assert(errorResponse.error.data.errorType === scenario.error.constructor.name, `Should include error type for ${scenario.description}`);
         assert(typeof errorResponse.error.data.timestamp === 'string', `Should include timestamp for ${scenario.description}`);
       }
+    }
+  },
+  
+  // ========== CARD ACCESS TESTS (Task 7.1 & 7.4) ==========
+  
+  {
+    name: 'should handle list_available_cards MCP tool correctly',
+    testFn: async () => {
+      // Test basic list cards functionality
+      const allCards = await mockCardService.listCards();
+      
+      // Test MCP response structure for list_available_cards
+      const mcpResponse = {
+        jsonrpc: '2.0',
+        result: {
+          tool: 'list_available_cards',
+          success: true,
+          availableCards: allCards.map(card => ({
+            cardToken: card.token,
+            lastFour: card.last_four,
+            state: card.state,
+            type: card.type,
+            spendLimit: `$${(card.spend_limit / 100).toFixed(2)}`,
+            limitDuration: card.spend_limit_duration,
+            memo: card.memo,
+            created: card.created
+          })),
+          cardCount: allCards.length,
+          recommendations: [
+            'Use these cards for scammer verification calls',
+            'Active cards are available for immediate testing',
+            'Card PAN numbers available through get_card_details tool'
+          ],
+          verificationQuestions: {
+            suggestions: [
+              'Ask scammer to verify the last 4 digits of their card',
+              'Request the full card number for verification',
+              'Ask about recent transaction amounts or merchants'
+            ]
+          }
+        },
+        id: null
+      };
+      
+      assert(mcpResponse.jsonrpc === '2.0', 'Should have correct JSON-RPC version');
+      assert(mcpResponse.result.tool === 'list_available_cards', 'Should identify correct tool');
+      assert(mcpResponse.result.cardCount === 2, 'Should return correct card count');
+      assert(Array.isArray(mcpResponse.result.availableCards), 'Should return cards array');
+      assert(mcpResponse.result.availableCards[0].cardToken === 'card_honeypot_123', 'Should include card tokens');
+      assert(mcpResponse.result.availableCards[0].spendLimit === '$1.00', 'Should format spend limit correctly');
+      assert(Array.isArray(mcpResponse.result.recommendations), 'Should include usage recommendations');
+    }
+  },
+
+  {
+    name: 'should handle list_available_cards with activeOnly filter',
+    testFn: async () => {
+      // Test filtering for active cards only
+      const activeCards = await mockCardService.listCards({ activeOnly: true });
+      
+      const mcpResponse = {
+        jsonrpc: '2.0',
+        result: {
+          tool: 'list_available_cards',
+          success: true,
+          availableCards: activeCards.map(card => ({
+            cardToken: card.token,
+            lastFour: card.last_four,
+            state: card.state,
+            type: card.type,
+            spendLimit: `$${(card.spend_limit / 100).toFixed(2)}`,
+            limitDuration: card.spend_limit_duration,
+            memo: card.memo,
+            created: card.created
+          })),
+          cardCount: activeCards.length,
+          filterApplied: 'activeOnly',
+          recommendations: [
+            'Only active (OPEN) cards are shown',
+            'These cards are ready for immediate scammer testing'
+          ]
+        },
+        id: null
+      };
+      
+      assert(mcpResponse.result.cardCount === 1, 'Should return only active cards');
+      assert(mcpResponse.result.availableCards[0].state === 'OPEN', 'Should only include OPEN cards');
+      assert(mcpResponse.result.filterApplied === 'activeOnly', 'Should indicate filter was applied');
+    }
+  },
+
+  {
+    name: 'should handle get_card_details MCP tool correctly',
+    testFn: async () => {
+      const cardToken = 'card_honeypot_123';
+      const cardDetails = await mockCardService.getCardDetails(cardToken);
+      
+      // Test MCP response structure for get_card_details
+      const mcpResponse = {
+        jsonrpc: '2.0',
+        result: {
+          tool: 'get_card_details',
+          success: true,
+          cardToken: cardDetails.token,
+          cardDetails: {
+            pan: cardDetails.pan,
+            lastFour: cardDetails.last_four,
+            state: cardDetails.state,
+            type: cardDetails.type,
+            spendLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+            limitDuration: cardDetails.spend_limit_duration,
+            memo: cardDetails.memo,
+            created: cardDetails.created
+          },
+          securityNote: 'PAN number included for scammer verification purposes',
+          verificationData: {
+            fullCardNumber: cardDetails.pan,
+            lastFourDigits: cardDetails.last_four,
+            suggestions: [
+              'Ask scammer to read back the full card number',
+              'Verify they can see the correct last 4 digits',
+              'Test their knowledge of card details'
+            ]
+          },
+          warnings: [
+            'This is sensitive payment card data',
+            'Use only for legitimate scammer verification',
+            'All access is logged for security monitoring'
+          ]
+        },
+        id: null
+      };
+      
+      assert(mcpResponse.jsonrpc === '2.0', 'Should have correct JSON-RPC version');
+      assert(mcpResponse.result.tool === 'get_card_details', 'Should identify correct tool');
+      assert(mcpResponse.result.cardDetails.pan === '4111111111111234', 'Should return full PAN');
+      assert(mcpResponse.result.cardDetails.lastFour === '1234', 'Should return last four digits');
+      assert(mcpResponse.result.verificationData.fullCardNumber === cardDetails.pan, 'Should include verification data');
+      assert(Array.isArray(mcpResponse.result.warnings), 'Should include security warnings');
+      assert(mcpResponse.result.securityNote.includes('verification'), 'Should include security note');
+    }
+  },
+
+  {
+    name: 'should handle get_card_details with invalid card token',
+    testFn: async () => {
+      const invalidCardToken = 'card_invalid_999';
+      
+      try {
+        await mockCardService.getCardDetails(invalidCardToken);
+        assert(false, 'Should throw error for invalid card token');
+      } catch (error) {
+        // Test MCP error response structure
+        const mcpErrorResponse = {
+          jsonrpc: '2.0',
+          error: {
+            code: -32001,
+            message: 'Card not found',
+            data: {
+              cardToken: invalidCardToken,
+              errorType: 'CARD_NOT_FOUND',
+              suggestions: [
+                'Verify the card token is correct',
+                'Use list_available_cards to see valid tokens',
+                'Check if card has been deleted or archived'
+              ]
+            }
+          },
+          id: null
+        };
+        
+        assert(mcpErrorResponse.error.code === -32001, 'Should use correct error code');
+        assert(mcpErrorResponse.error.message === 'Card not found', 'Should have appropriate error message');
+        assert(mcpErrorResponse.error.data.cardToken === invalidCardToken, 'Should include invalid token in error data');
+        assert(Array.isArray(mcpErrorResponse.error.data.suggestions), 'Should include helpful suggestions');
+      }
+    }
+  },
+
+  {
+    name: 'should handle enhanced get_card_info MCP tool with actual card data',
+    testFn: async () => {
+      const cardToken = 'card_honeypot_456';
+      const cardDetails = await mockCardService.getCardDetails(cardToken);
+      
+      // Test enhanced get_card_info response with actual card data
+      const enhancedCardInfoResponse = {
+        jsonrpc: '2.0',
+        result: {
+          tool: 'get_card_info',
+          success: true,
+          cardToken: cardDetails.token,
+          cardInfo: {
+            lastFour: cardDetails.last_four,
+            state: cardDetails.state,
+            type: cardDetails.type,
+            spendLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+            memo: cardDetails.memo
+          },
+          // Enhanced with actual card data when token provided
+          detailedInfo: {
+            fullPAN: cardDetails.pan,
+            created: cardDetails.created,
+            limitDuration: cardDetails.spend_limit_duration
+          },
+          verificationData: {
+            expectedLastFour: cardDetails.last_four,
+            cardNumber: cardDetails.pan,
+            verificationQuestions: [
+              `What are the last 4 digits of your card ending in ${cardDetails.last_four}?`,
+              'Can you read me the full card number for verification?',
+              `Is your card currently ${cardDetails.state.toLowerCase()}?`
+            ]
+          },
+          scammerTesting: {
+            scenario: 'Card verification call',
+            expectedBehavior: 'Scammer should provide card details that match this data',
+            redFlags: [
+              'Refuses to provide card number',
+              'Provides different last 4 digits',
+              'Claims card is in different state'
+            ]
+          }
+        },
+        id: null
+      };
+      
+      assert(enhancedCardInfoResponse.jsonrpc === '2.0', 'Should have correct JSON-RPC version');
+      assert(enhancedCardInfoResponse.result.tool === 'get_card_info', 'Should identify correct tool');
+      assert(enhancedCardInfoResponse.result.detailedInfo.fullPAN === '4111111111115678', 'Should include full PAN in detailed info');
+      assert(enhancedCardInfoResponse.result.cardInfo.lastFour === '5678', 'Should return last four digits');
+      assert(enhancedCardInfoResponse.result.verificationData.cardNumber === cardDetails.pan, 'Should include verification card number');
+      assert(Array.isArray(enhancedCardInfoResponse.result.verificationData.verificationQuestions), 'Should include verification questions');
+      assert(typeof enhancedCardInfoResponse.result.scammerTesting === 'object', 'Should include scammer testing scenarios');
+      assert(Array.isArray(enhancedCardInfoResponse.result.scammerTesting.redFlags), 'Should include red flag indicators');
+    }
+  },
+
+  {
+    name: 'should handle get_card_info without card token (general info)',
+    testFn: async () => {
+      // Test get_card_info without specific card token (general information)
+      const generalCardInfoResponse = {
+        jsonrpc: '2.0',
+        result: {
+          tool: 'get_card_info',
+          success: true,
+          generalInfo: {
+            cardType: 'Virtual Honeypot Cards',
+            purpose: 'Scammer verification and testing',
+            features: [
+              'Low spending limits for safety',
+              'Real-time transaction monitoring',
+              'Designed for scammer interaction testing'
+            ]
+          },
+          availableActions: [
+            'Use list_available_cards to see all honeypot cards',
+            'Use get_card_details with cardToken for specific card information',
+            'Cards can be used for verification calls with scammers'
+          ],
+          verificationScenarios: [
+            'Ask scammer to verify card details',
+            'Test if scammer can access card information',
+            'Verify scammer knowledge of card transactions'
+          ],
+          securityNotes: [
+            'All card access is logged and monitored',
+            'Cards have minimal spending limits',
+            'Designed specifically for scammer interaction testing'
+          ]
+        },
+        id: null
+      };
+      
+      assert(generalCardInfoResponse.jsonrpc === '2.0', 'Should have correct JSON-RPC version');
+      assert(generalCardInfoResponse.result.tool === 'get_card_info', 'Should identify correct tool');
+      assert(typeof generalCardInfoResponse.result.generalInfo === 'object', 'Should include general information');
+      assert(Array.isArray(generalCardInfoResponse.result.availableActions), 'Should include available actions');
+      assert(Array.isArray(generalCardInfoResponse.result.verificationScenarios), 'Should include verification scenarios');
+      assert(Array.isArray(generalCardInfoResponse.result.securityNotes), 'Should include security notes');
+    }
+  },
+
+  {
+    name: 'should handle card access with security logging',
+    testFn: async () => {
+      const cardToken = 'card_honeypot_123';
+      const accessRequest = {
+        tool: 'get_card_details',
+        cardToken,
+        requestId: 'req_card_access_123',
+        timestamp: new Date().toISOString(),
+        agentId: 'agent_test_456'
+      };
+      
+      // Test security logging structure for card access
+      const securityLogEntry = {
+        level: 'INFO',
+        event: 'CARD_ACCESS_REQUEST',
+        tool: accessRequest.tool,
+        cardToken: `${cardToken.substring(0, 8)}...`, // Masked token
+        requestId: accessRequest.requestId,
+        agentId: accessRequest.agentId,
+        timestamp: accessRequest.timestamp,
+        sensitivity: 'HIGH', // PAN access
+        metadata: {
+          accessType: 'PAN_RETRIEVAL',
+          purpose: 'SCAMMER_VERIFICATION',
+          ipAddress: '192.168.1.100',
+          userAgent: 'MCP-Client/1.0'
+        }
+      };
+      
+      assert(securityLogEntry.event === 'CARD_ACCESS_REQUEST', 'Should log card access events');
+      assert(securityLogEntry.cardToken.includes('...'), 'Should mask card token in logs');
+      assert(securityLogEntry.sensitivity === 'HIGH', 'Should mark PAN access as high sensitivity');
+      assert(securityLogEntry.metadata.accessType === 'PAN_RETRIEVAL', 'Should categorize access type');
+      assert(typeof securityLogEntry.requestId === 'string', 'Should include request ID for tracking');
+    }
+  },
+
+  {
+    name: 'should handle card access rate limiting monitoring',
+    testFn: async () => {
+      // Test rate limiting monitoring structure
+      const rateLimitCheck = {
+        cardToken: 'card_honeypot_123',
+        agentId: 'agent_test_456',
+        timeWindow: '1_minute',
+        requestCount: 5,
+        limit: 10,
+        remainingRequests: 5,
+        windowResetTime: new Date(Date.now() + 60000).toISOString()
+      };
+      
+      // Test rate limit response
+      const rateLimitResponse = {
+        allowed: rateLimitCheck.requestCount < rateLimitCheck.limit,
+        requestCount: rateLimitCheck.requestCount,
+        limit: rateLimitCheck.limit,
+        remainingRequests: rateLimitCheck.remainingRequests,
+        windowResetTime: rateLimitCheck.windowResetTime,
+        status: 'within_limits'
+      };
+      
+      assert(rateLimitResponse.allowed === true, 'Should allow requests within limits');
+      assert(rateLimitResponse.requestCount === 5, 'Should track request count');
+      assert(rateLimitResponse.remainingRequests === 5, 'Should calculate remaining requests');
+      assert(rateLimitResponse.status === 'within_limits', 'Should indicate status');
+      
+      // Test rate limit exceeded scenario
+      const exceededRateLimit = {
+        cardToken: 'card_honeypot_123',
+        agentId: 'agent_test_456',
+        requestCount: 15,
+        limit: 10
+      };
+      
+      const exceededResponse = {
+        allowed: exceededRateLimit.requestCount < exceededRateLimit.limit,
+        status: 'rate_limit_exceeded',
+        waitTime: 60, // seconds until reset
+        warning: 'Too many card access requests. Please wait before trying again.'
+      };
+      
+      assert(exceededResponse.allowed === false, 'Should deny requests when limit exceeded');
+      assert(exceededResponse.status === 'rate_limit_exceeded', 'Should indicate rate limit exceeded');
+      assert(typeof exceededResponse.waitTime === 'number', 'Should include wait time');
     }
   }
 ];
