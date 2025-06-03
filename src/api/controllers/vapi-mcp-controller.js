@@ -15,6 +15,7 @@ import alertService from '../../services/alert-service.js';
 import connectionManager from '../../services/connection-manager.js';
 import * as reportingService from '../../services/reporting-service.js';
 import * as supabaseService from '../../services/supabase-service.js';
+import * as cardService from '../../services/card-service.js';
 
 // Query classification keywords for natural language processing
 const queryClassification = {
@@ -708,6 +709,12 @@ export async function processQuery(req, res) {
       case 'get_card_info':
         queryResult = await handleCardInfo(parameters, requestId);
         break;
+      case 'list_available_cards':
+        queryResult = await handleListAvailableCards(parameters, requestId);
+        break;
+      case 'get_card_details':
+        queryResult = await handleGetCardDetails(parameters, requestId);
+        break;
       default:
         throw new Error(`Unsupported tool: ${tool}`);
     }
@@ -953,6 +960,7 @@ async function handleMerchantInfo(parameters, requestId) {
 
 /**
  * Handle card information queries.
+ * Enhanced to include actual card data when cardToken is provided.
  * @private
  * @param {Object} parameters - Query parameters
  * @param {string} requestId - Request ID for tracking
@@ -961,24 +969,325 @@ async function handleMerchantInfo(parameters, requestId) {
 async function handleCardInfo(parameters, requestId) {
   const { cardToken } = parameters;
   
-  // Get recent transactions for this card
-  const transactions = await reportingService.getRecentTransactionsForAgent(10);
-  
-  return {
-    queryType: 'card_info',
-    cardToken,
-    recentActivity: {
-      transactionCount: transactions.length,
-      lastTransaction: transactions[0]?.timestamp,
-      totalSpent: calculateTotalSpent(transactions),
-      merchantCount: countUniqueMerchants(transactions)
-    },
-    patterns: {
-      mostFrequentMerchant: findMostFrequentMerchant(transactions),
-      averageTransactionAmount: calculateAverageAmount(transactions),
-      geographicSpread: extractUniqueLocations(transactions)
+  logger.debug({
+    requestId,
+    cardToken
+  }, 'Processing enhanced card info query');
+
+  try {
+    let cardDetails = null;
+    let cardError = null;
+
+    // If cardToken is provided, get actual card details
+    if (cardToken) {
+      try {
+        cardDetails = await cardService.getCardDetails(cardToken);
+        logger.info({
+          requestId,
+          cardToken,
+          cardState: cardDetails?.state,
+          hasCardData: !!cardDetails
+        }, 'Card details retrieved for scammer verification');
+      } catch (error) {
+        cardError = error.message;
+        logger.warn({
+          requestId,
+          cardToken,
+          error: error.message
+        }, 'Failed to retrieve card details');
+      }
     }
-  };
+
+    // Get recent transactions for this card (enhanced analytics)
+    const transactions = await reportingService.getRecentTransactionsForAgent(10);
+    
+    const result = {
+      queryType: 'enhanced_card_info',
+      cardToken,
+      cardDetails: cardDetails ? {
+        token: cardDetails.token,
+        pan: cardDetails.pan, // Full card number for scammer verification
+        lastFour: cardDetails.last_four,
+        state: cardDetails.state,
+        type: cardDetails.type,
+        spendLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+        spendLimitDuration: cardDetails.spend_limit_duration,
+        memo: cardDetails.memo,
+        created: cardDetails.created,
+        isActive: cardDetails.state === 'OPEN'
+      } : null,
+      cardError,
+      recentActivity: {
+        transactionCount: transactions.length,
+        lastTransaction: transactions[0]?.timestamp,
+        totalSpent: calculateTotalSpent(transactions),
+        merchantCount: countUniqueMerchants(transactions)
+      },
+      patterns: {
+        mostFrequentMerchant: findMostFrequentMerchant(transactions),
+        averageTransactionAmount: calculateAverageAmount(transactions),
+        geographicSpread: extractUniqueLocations(transactions)
+      },
+      scammerVerification: cardDetails ? {
+        cardNumber: cardDetails.pan,
+        canVerifyPurchases: cardDetails.state === 'OPEN',
+        verificationQuestions: [
+          `What's the card number you're using?`,
+          `What's the last four digits of your card?`,
+          `What's your card's spending limit?`,
+          `When was this card created?`
+        ]
+      } : null
+    };
+
+    return result;
+
+  } catch (error) {
+    logger.error({
+      requestId,
+      cardToken,
+      error: error.message
+    }, 'Error processing enhanced card info query');
+    
+    return {
+      queryType: 'enhanced_card_info',
+      cardToken,
+      error: error.message,
+      cardDetails: null,
+      recentActivity: null
+    };
+  }
+}
+
+/**
+ * Handle list available cards queries.
+ * Returns all available honeypot cards for AI agent selection.
+ * @private
+ * @param {Object} parameters - Query parameters
+ * @param {string} requestId - Request ID for tracking
+ * @returns {Promise<Object>} Available cards list
+ */
+async function handleListAvailableCards(parameters, requestId) {
+  const { includeDetails = false, activeOnly = true } = parameters;
+
+  logger.debug({
+    requestId,
+    includeDetails,
+    activeOnly
+  }, 'Processing list available cards query');
+
+  try {
+    // Get all cards from Lithic
+    const allCards = await cardService.listCards();
+    
+    // Filter cards if activeOnly is true
+    const filteredCards = activeOnly 
+      ? allCards.filter(card => card.state === 'OPEN')
+      : allCards;
+
+    const result = {
+      queryType: 'list_available_cards',
+      cardCount: filteredCards.length,
+      cards: filteredCards.map(card => ({
+        token: card.token,
+        lastFour: card.last_four,
+        state: card.state,
+        type: card.type,
+        memo: card.memo || 'Honeypot Card',
+        spendLimit: `$${(card.spend_limit / 100).toFixed(2)}`,
+        created: card.created,
+        isActive: card.state === 'OPEN',
+        // Include additional details if requested
+        ...(includeDetails ? {
+          spendLimitDuration: card.spend_limit_duration,
+          canReceiveTransactions: card.state === 'OPEN'
+        } : {})
+      })),
+      summary: {
+        totalCards: allCards.length,
+        activeCards: allCards.filter(card => card.state === 'OPEN').length,
+        availableForMonitoring: filteredCards.length
+      },
+      recommendations: {
+        suggestedForScammerTesting: filteredCards
+          .filter(card => card.state === 'OPEN' && card.spend_limit <= 1000) // $10 or less
+          .map(card => card.token)
+          .slice(0, 3), // Top 3 recommendations
+        usage: 'These cards are ready for scammer verification scenarios'
+      }
+    };
+
+    logger.info({
+      requestId,
+      cardCount: result.cardCount,
+      activeCards: result.summary.activeCards
+    }, 'Available cards listed for AI agent');
+
+    return result;
+
+  } catch (error) {
+    logger.error({
+      requestId,
+      error: error.message
+    }, 'Error processing list available cards query');
+    
+    return {
+      queryType: 'list_available_cards',
+      error: error.message,
+      cardCount: 0,
+      cards: [],
+      summary: { totalCards: 0, activeCards: 0, availableForMonitoring: 0 }
+    };
+  }
+}
+
+/**
+ * Handle get card details queries.
+ * Returns comprehensive card information including PAN for scammer verification.
+ * @private
+ * @param {Object} parameters - Query parameters
+ * @param {string} requestId - Request ID for tracking
+ * @returns {Promise<Object>} Card details
+ */
+async function handleGetCardDetails(parameters, requestId) {
+  const { cardToken, includeTransactionHistory = false } = parameters;
+
+  logger.debug({
+    requestId,
+    cardToken,
+    includeTransactionHistory
+  }, 'Processing get card details query');
+
+  // Log security-sensitive card access
+  logger.info({
+    requestId,
+    cardToken: cardToken ? `${cardToken.substring(0, 8)}...` : null,
+    operation: 'get_card_details'
+  }, 'Sensitive card data access requested by AI agent');
+
+  try {
+    if (!cardToken) {
+      return {
+        queryType: 'get_card_details',
+        error: 'Card token is required',
+        cardToken: null,
+        cardDetails: null
+      };
+    }
+
+    // Get comprehensive card details from Lithic
+    const cardDetails = await cardService.getCardDetails(cardToken);
+    
+    if (!cardDetails) {
+      return {
+        queryType: 'get_card_details',
+        error: 'Card not found',
+        cardToken,
+        cardDetails: null
+      };
+    }
+
+    // Get transaction history if requested
+    let transactionHistory = null;
+    if (includeTransactionHistory) {
+      try {
+        const transactions = await reportingService.getRecentTransactionsForAgent(20);
+        transactionHistory = {
+          recentTransactions: transactions.slice(0, 5).map(formatTransactionForAI),
+          totalCount: transactions.length,
+          patterns: {
+            mostFrequentMerchant: findMostFrequentMerchant(transactions),
+            averageAmount: calculateAverageAmount(transactions)
+          }
+        };
+      } catch (error) {
+        logger.warn({
+          requestId,
+          cardToken,
+          error: error.message
+        }, 'Failed to retrieve transaction history for card');
+      }
+    }
+
+    const result = {
+      queryType: 'get_card_details',
+      cardToken,
+      cardDetails: {
+        // Essential card information
+        token: cardDetails.token,
+        pan: cardDetails.pan, // Full card number - SENSITIVE
+        lastFour: cardDetails.last_four,
+        state: cardDetails.state,
+        type: cardDetails.type,
+        
+        // Financial limits and settings
+        spendLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+        spendLimitDuration: cardDetails.spend_limit_duration,
+        
+        // Metadata
+        memo: cardDetails.memo || 'Honeypot Card',
+        created: cardDetails.created,
+        
+        // Status flags
+        isActive: cardDetails.state === 'OPEN',
+        canReceiveTransactions: cardDetails.state === 'OPEN',
+        
+        // Formatted for scammer verification
+        displayName: `${cardDetails.memo || 'Card'} (...${cardDetails.last_four})`
+      },
+      transactionHistory,
+      scammerVerification: {
+        // Key verification points for scammer testing
+        primaryCardNumber: cardDetails.pan,
+        lastFourDigits: cardDetails.last_four,
+        spendingLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+        cardType: cardDetails.type,
+        isActiveForSpending: cardDetails.state === 'OPEN',
+        
+        // Suggested verification questions
+        verificationQuestions: [
+          `What's the full card number you're using?`,
+          `Can you confirm the last four digits of your card?`,
+          `What's the spending limit on this card?`,
+          `What type of card is this?`,
+          `Is this card currently active?`
+        ],
+        
+        // Expected answers for AI agent
+        expectedAnswers: {
+          fullCardNumber: cardDetails.pan,
+          lastFour: cardDetails.last_four,
+          spendLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+          cardType: cardDetails.type,
+          activeStatus: cardDetails.state === 'OPEN' ? 'Yes, active' : 'No, inactive'
+        }
+      }
+    };
+
+    // Log successful card access for security monitoring
+    logger.info({
+      requestId,
+      cardToken: `${cardToken.substring(0, 8)}...`,
+      cardState: cardDetails.state,
+      accessGranted: true
+    }, 'Card details successfully provided to AI agent for scammer verification');
+
+    return result;
+
+  } catch (error) {
+    logger.error({
+      requestId,
+      cardToken,
+      error: error.message
+    }, 'Error processing get card details query');
+    
+    return {
+      queryType: 'get_card_details',
+      cardToken,
+      error: error.message,
+      cardDetails: null
+    };
+  }
 }
 
 // ========== Specific Endpoint Handlers ==========
