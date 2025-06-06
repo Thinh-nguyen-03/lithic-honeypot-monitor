@@ -347,35 +347,176 @@ export async function saveTransaction(lithicTransaction) {
 
     // NEW: Trigger real-time alert after successful transaction save
     try {
+      // Calculate amount with proper fallbacks
+      const rawAmount = transactionDetailsToSave.cardholder_amount || 
+                       transactionDetailsToSave.merchant_amount || 
+                       lithicTransaction.amount || 0;
+      const formattedAmount = typeof rawAmount === 'number' && !isNaN(rawAmount) 
+        ? `$${(rawAmount / 100).toFixed(2)}`
+        : '$0.00';
+
+      // Format location with better fallback
+      const locationParts = [
+        merchantInfoToParse.city,
+        merchantInfoToParse.state,
+        merchantInfoToParse.country
+      ].filter(Boolean);
+      const formattedLocation = locationParts.length > 0 
+        ? locationParts.join(', ')
+        : 'Unknown Location';
+
+      // Get network info with fallback
+      const networkInfo = transactionDetailsToSave.network_type || 
+                         transactionDetailsToSave.network || 
+                         lithicTransaction.network || 
+                         'UNKNOWN';
+
+      // Get MCC information for verification data
+      let mccDetails = null;
+      if (merchantInfoToParse.mcc) {
+        try {
+          mccDetails = await lookupMCC(merchantInfoToParse.mcc);
+        } catch (mccError) {
+          logger.warn({ err: mccError, mcc: merchantInfoToParse.mcc }, 'Failed to lookup MCC for alert');
+        }
+      }
+
+      // Enhanced merchant intelligence based on acceptor_id (not just database merchantId)
+      let merchantIntelligence = {
+        isFirstTransaction: true,
+        newMerchant: true,
+        merchantHistory: 'New merchant for this card',
+        geographicPattern: 'New location for this card'
+      };
+
+      // Check for previous transactions with this acceptor_id for this card
+      if (merchantInfoToParse.acceptor_id && merchantId) {
+        try {
+          // First, get all transaction tokens for this merchant
+          const { data: merchantTransactions, error: merchantError } = await supabase_client
+            .from('transaction_merchants')
+            .select('transaction_token')
+            .eq('merchant_id', merchantId);
+
+          if (merchantError) {
+            logger.warn({ 
+              err: merchantError, 
+              merchantId: merchantId
+            }, 'Failed to get merchant transactions');
+          } else if (merchantTransactions && merchantTransactions.length > 0) {
+            // Get the transaction tokens (excluding current transaction)
+            const transactionTokens = merchantTransactions
+              .map(t => t.transaction_token)
+              .filter(token => token !== transactionToken);
+
+            if (transactionTokens.length > 0) {
+              // Now query transactions table for these tokens with the same card
+              const { data: previousTransactions, error: prevError } = await supabase_client
+                .from('transactions')
+                .select('token, card_token, created_at')
+                .eq('card_token', transactionDetailsToSave.card_token)
+                .in('token', transactionTokens)
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+              logger.debug({
+                transactionToken,
+                cardToken: transactionDetailsToSave.card_token,
+                acceptorId: merchantInfoToParse.acceptor_id,
+                merchantId: merchantId,
+                merchantTransactionCount: merchantTransactions.length,
+                filteredTokens: transactionTokens,
+                previousCount: previousTransactions?.length || 0,
+                previousTokens: previousTransactions?.map(t => t.token) || [],
+                queryError: prevError?.message
+              }, 'Merchant intelligence analysis results');
+
+              if (!prevError && previousTransactions && previousTransactions.length > 0) {
+                merchantIntelligence = {
+                  isFirstTransaction: false,
+                  newMerchant: false,
+                  merchantHistory: `Previous transactions: ${previousTransactions.length} with this merchant`,
+                  geographicPattern: `Known merchant location for this card`
+                };
+                
+                logger.debug({
+                  transactionToken,
+                  acceptorId: merchantInfoToParse.acceptor_id,
+                  merchantId: merchantId,
+                  merchantIntelligence
+                }, 'Updated merchant intelligence - repeat merchant detected');
+              } else {
+                logger.debug({
+                  transactionToken,
+                  acceptorId: merchantInfoToParse.acceptor_id,
+                  merchantId: merchantId,
+                  merchantIntelligence,
+                  reason: prevError ? 'query_error' : 'no_previous_transactions'
+                }, 'Merchant intelligence - first transaction with this merchant');
+              }
+            } else {
+              logger.debug({
+                transactionToken,
+                acceptorId: merchantInfoToParse.acceptor_id,
+                merchantId: merchantId,
+                merchantIntelligence,
+                reason: 'no_other_transactions_for_merchant'
+              }, 'Merchant intelligence - first transaction with this merchant');
+            }
+          } else {
+            logger.debug({
+              transactionToken,
+              acceptorId: merchantInfoToParse.acceptor_id,
+              merchantId: merchantId,
+              merchantIntelligence,
+              reason: 'no_merchant_transactions_found'
+            }, 'Merchant intelligence - first transaction with this merchant');
+          }
+        } catch (intelligenceError) {
+          logger.warn({ 
+            err: intelligenceError, 
+            cardToken: transactionDetailsToSave.card_token,
+            acceptorId: merchantInfoToParse.acceptor_id,
+            merchantId: merchantId
+          }, 'Failed to analyze merchant intelligence');
+        }
+      }
+
       const alertData = {
         alertType: 'NEW_TRANSACTION',
         timestamp: new Date().toISOString(),
         transactionId: transactionDetailsToSave.token,
         cardToken: transactionDetailsToSave.card_token,
         immediate: {
-          amount: `$${(transactionDetailsToSave.cardholder_amount / 100).toFixed(2)}`,
+          amount: formattedAmount,
           merchant: merchantInfoToParse.descriptor || 'Unknown Merchant',
-          location: [merchantInfoToParse.city, merchantInfoToParse.state, merchantInfoToParse.country]
-            .filter(Boolean).join(', ') || 'Unknown Location',
-          status: transactionDetailsToSave.result,
-          network: transactionDetailsToSave.network_type,
-          networkTransactionID: transactionDetailsToSave.network_transaction_id
+          location: formattedLocation,
+          status: transactionDetailsToSave.result || 'PENDING',
+          network: networkInfo,
+          networkTransactionID: transactionDetailsToSave.network_transaction_id || ''
         },
         verification: {
           mccCode: merchantInfoToParse.mcc || '',
-          merchantType: 'Available from MCC lookup',
-          merchantCategory: 'Available from MCC lookup',
+          merchantType: mccDetails?.description || 'Unknown',
+          merchantCategory: mccDetails?.category || 'Unknown',
           authorizationCode: transactionDetailsToSave.authorization_code || '',
           retrievalReference: transactionDetailsToSave.retrieval_reference_number || ''
         },
         intelligence: {
-          isFirstTransaction: false, // Can be enhanced later
-          newMerchant: merchantId ? false : true,
-          amountRange: transactionDetailsToSave.cardholder_amount < 500 ? 'small' : 'normal',
-          merchantHistory: merchantId ? 'Known merchant for this card' : 'New merchant for this card',
-          geographicPattern: 'Transaction location analysis'
+          isFirstTransaction: merchantIntelligence.isFirstTransaction,
+          newMerchant: merchantIntelligence.newMerchant,
+          amountRange: (typeof rawAmount === 'number' && rawAmount < 500) ? 'small' : 'normal',
+          merchantHistory: merchantIntelligence.merchantHistory,
+          geographicPattern: merchantIntelligence.geographicPattern
         }
       };
+
+      logger.debug({ 
+        transactionToken,
+        alertData,
+        rawAmount,
+        merchantInfo: merchantInfoToParse 
+      }, 'Generated alert data for broadcast');
 
       await alertService.broadcastAlert(transactionDetailsToSave.card_token, alertData);
       
