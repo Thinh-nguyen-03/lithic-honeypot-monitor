@@ -1,4 +1,5 @@
 import express from "express";
+import { v4 as uuidv4 } from 'uuid';
 import { handleLithicEvent } from "../controllers/lithic-webhook-controller.js";
 import * as lithicService from '../../services/lithic-service.js';
 import * as cardService from '../../services/card-service.js';
@@ -10,7 +11,7 @@ router.post("/lithic", handleLithicEvent);
 
 // New endpoint for real transaction simulation
 router.post('/simulate', async (req, res) => {
-  const requestId = req.headers['x-request-id'] || 'unknown';
+  const requestId = req.requestId || uuidv4();
   
   try {
     const { cardToken, amount, descriptor, mcc, merchant_acceptor_id, city, state, country } = req.body;
