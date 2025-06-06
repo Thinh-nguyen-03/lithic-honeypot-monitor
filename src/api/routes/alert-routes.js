@@ -11,7 +11,6 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import * as alertController from '../controllers/alert-controller.js';
-import { validateAlertRequest } from '../../middleware/validation.js';
 import logger from '../../utils/logger.js';
 
 const router = express.Router();
@@ -201,7 +200,6 @@ function validateRouteParams(req, res, next) {
 router.get('/stream/:cardToken', 
   alertRequestLogger,
   validateRouteParams,
-  validateAlertRequest,
   alertController.establishSSEConnection
 );
 
