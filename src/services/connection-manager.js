@@ -53,15 +53,12 @@ class ConnectionManager {
       // Generate unique session ID
       const sessionId = uuidv4();
       
-      // Set up SSE headers
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no' // Disable Nginx buffering
-      });
+      // Pre-validate everything before setting headers
+      if (!cardToken || !res || !req) {
+        throw new Error('Missing required parameters for connection creation');
+      }
       
-      // Create connection info
+      // Create connection info object (but don't store it yet)
       const connectionInfo = {
         sessionId,
         cardToken,
@@ -82,7 +79,17 @@ class ConnectionManager {
         healthChecksFailed: 0
       };
       
-      // Store connection
+      // Now set up SSE headers (only after validation)
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control',
+        'X-Accel-Buffering': 'no' // Disable Nginx buffering
+      });
+      
+      // Store connection (after headers are set)
       this.connections.set(sessionId, connectionInfo);
       
       // Register with alert service
@@ -132,13 +139,32 @@ class ConnectionManager {
         metadata
       }, 'Failed to create connection');
       
-      // Clean up on failure
+      // Clean up on failure - only send JSON response if headers haven't been sent
       if (res && !res.headersSent) {
         res.status(500).json({
           error: 'Connection Error',
           message: 'Failed to establish SSE connection',
           timestamp: new Date().toISOString()
         });
+      } else if (res && res.headersSent) {
+        // If SSE headers already sent, send an error event instead
+        try {
+          const errorEvent = {
+            type: 'error',
+            data: {
+              error: 'Connection Error',
+              message: 'Failed to complete SSE connection setup',
+              timestamp: new Date().toISOString()
+            }
+          };
+          res.write(`event: error\ndata: ${JSON.stringify(errorEvent.data)}\n\n`);
+          res.end();
+        } catch (writeError) {
+          logger.error({
+            error: writeError.message,
+            originalError: error.message
+          }, 'Failed to send SSE error event');
+        }
       }
       
       this.metrics.failedConnections++;
