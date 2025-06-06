@@ -3,6 +3,7 @@ import {
   parseTransactionDetails,
   parseMerchantInfo,
 } from "../utils/parsers.js";
+import { lookupMCC } from "./mcc-service.js";
 import alertService from "./alert-service.js";
 import logger from "../utils/logger.js";
 
@@ -22,6 +23,39 @@ function areMerchantDetailsDifferent(existingDetails, incomingDetails) {
     existingDetails.country !== (incomingDetails.country || null) ||
     existingDetails.mcc !== (incomingDetails.mcc || null)
   );
+}
+
+/**
+ * Helper function to enrich merchant data with MCC information.
+ * @param {Object} merchantInfo - Basic merchant information
+ * @returns {Promise<Object>} Enriched merchant information with MCC details
+ */
+async function enrichMerchantWithMCC(merchantInfo) {
+  const enrichedMerchant = { ...merchantInfo };
+  
+  if (merchantInfo.mcc) {
+    try {
+      const mccDetails = await lookupMCC(merchantInfo.mcc);
+      if (mccDetails) {
+        enrichedMerchant.mcc_description = mccDetails.description;
+        enrichedMerchant.mcc_category = mccDetails.category;
+        logger.debug(`MCC enrichment successful for ${merchantInfo.mcc}: ${mccDetails.description}`);
+      } else {
+        logger.warn(`MCC ${merchantInfo.mcc} not found in database`);
+        enrichedMerchant.mcc_description = null;
+        enrichedMerchant.mcc_category = null;
+      }
+    } catch (error) {
+      logger.error(`Error looking up MCC ${merchantInfo.mcc}:`, error);
+      enrichedMerchant.mcc_description = null;
+      enrichedMerchant.mcc_category = null;
+    }
+  } else {
+    enrichedMerchant.mcc_description = null;
+    enrichedMerchant.mcc_category = null;
+  }
+  
+  return enrichedMerchant;
 }
 
 /**
@@ -157,16 +191,22 @@ export async function saveTransaction(lithicTransaction) {
           { transactionToken, merchantId },
           "Merchant details differ, attempting update.",
         );
+        
+        // Enrich with MCC details before updating
+        const enrichedMerchantInfo = await enrichMerchantWithMCC(merchantInfoToParse);
+        
         const detailsToUpdate = {
-          descriptor: merchantInfoToParse.descriptor,
-          city: merchantInfoToParse.city || null,
-          state: merchantInfoToParse.state || null,
-          country: merchantInfoToParse.country || null,
-          mcc: merchantInfoToParse.mcc || null,
+          descriptor: enrichedMerchantInfo.descriptor,
+          city: enrichedMerchantInfo.city || null,
+          state: enrichedMerchantInfo.state || null,
+          country: enrichedMerchantInfo.country || null,
+          mcc: enrichedMerchantInfo.mcc || null,
+          mcc_description: enrichedMerchantInfo.mcc_description,
+          mcc_category: enrichedMerchantInfo.mcc_category,
         };
         
-        if (merchantInfoToParse.acceptor_id) {
-          detailsToUpdate.acceptor_id = merchantInfoToParse.acceptor_id;
+        if (enrichedMerchantInfo.acceptor_id) {
+          detailsToUpdate.acceptor_id = enrichedMerchantInfo.acceptor_id;
         }
 
         const { error: updateError } = await supabase_client
@@ -201,9 +241,13 @@ export async function saveTransaction(lithicTransaction) {
         { transactionToken, merchantInfo: merchantInfoToParse },
         "Creating new merchant as no definitive existing match was found.",
       );
+      
+      // Enrich with MCC details before creating
+      const enrichedMerchantInfo = await enrichMerchantWithMCC(merchantInfoToParse);
+      
       const { data: newMerchant, error: insertError } = await supabase_client
         .from("merchants")
-        .insert([merchantInfoToParse])
+        .insert([enrichedMerchantInfo])
         .select("id")
         .single();
 
@@ -492,6 +536,80 @@ export async function checkIfTransactionExists(transactionToken) {
       { err: error, transactionToken },
       `Unhandled error checking transaction existence:`,
     );
+    throw error;
+  }
+}
+
+/**
+ * Update existing merchants that are missing MCC descriptions and categories.
+ * This is a utility function to backfill data for merchants created before MCC enrichment.
+ * @returns {Promise<Object>} Results of the update operation
+ */
+export async function updateMerchantsWithMCCData() {
+  try {
+    logger.info("Starting MCC enrichment for existing merchants...");
+    
+    // Get merchants without MCC descriptions
+    const { data: merchantsToUpdate, error: selectError } = await supabase_client
+      .from("merchants")
+      .select("id, mcc, descriptor")
+      .is("mcc_description", null)
+      .not("mcc", "is", null);
+
+    if (selectError) {
+      logger.error("Error fetching merchants for MCC update:", selectError);
+      throw selectError;
+    }
+
+    if (!merchantsToUpdate || merchantsToUpdate.length === 0) {
+      logger.info("No merchants need MCC enrichment");
+      return { updated: 0, total: 0 };
+    }
+
+    logger.info(`Found ${merchantsToUpdate.length} merchants needing MCC enrichment`);
+    
+    let updatedCount = 0;
+    let errorCount = 0;
+
+    for (const merchant of merchantsToUpdate) {
+      try {
+        const mccDetails = await lookupMCC(merchant.mcc);
+        
+        if (mccDetails) {
+          const { error: updateError } = await supabase_client
+            .from("merchants")
+            .update({
+              mcc_description: mccDetails.description,
+              mcc_category: mccDetails.category
+            })
+            .eq("id", merchant.id);
+
+          if (updateError) {
+            logger.error(`Error updating merchant ${merchant.id}:`, updateError);
+            errorCount++;
+          } else {
+            updatedCount++;
+            logger.debug(`Updated merchant ${merchant.descriptor} (${merchant.id}) with MCC ${merchant.mcc}`);
+          }
+        } else {
+          logger.warn(`MCC ${merchant.mcc} not found for merchant ${merchant.descriptor}`);
+        }
+      } catch (error) {
+        logger.error(`Error processing merchant ${merchant.id}:`, error);
+        errorCount++;
+      }
+    }
+
+    logger.info(`MCC enrichment complete: ${updatedCount} updated, ${errorCount} errors`);
+    
+    return {
+      total: merchantsToUpdate.length,
+      updated: updatedCount,
+      errors: errorCount
+    };
+
+  } catch (error) {
+    logger.error("Error in updateMerchantsWithMCCData:", error);
     throw error;
   }
 }
