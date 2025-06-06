@@ -25,13 +25,7 @@ export async function establishSSEConnection(req, res) {
   const requestId = req.requestId || uuidv4();
   const startTime = Date.now();
   
-  logger.info({
-    requestId,
-    method: req.method,
-    url: req.originalUrl,
-    ip: req.ip,
-    userAgent: req.get('user-agent')
-  }, 'SSE connection request received');
+  // Request already logged by route middleware
 
   try {
     // Authenticate the AI agent
@@ -68,19 +62,7 @@ export async function establishSSEConnection(req, res) {
     // TODO: Enhance to support multiple card tokens per connection
     const primaryCardToken = cardTokens[0];
 
-    // Set up SSE headers before any writes
-    const sseHeaders = {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Cache-Control',
-      'X-Accel-Buffering': 'no' // Disable proxy buffering
-    };
-
-    res.writeHead(200, sseHeaders);
-
-    // Create connection through connection manager
+    // Create connection through connection manager (it will set SSE headers)
     const connectionInfo = await connectionManager.createConnection(
       req,
       res,
@@ -133,24 +115,28 @@ export async function establishSSEConnection(req, res) {
  */
 export async function authenticateAgent(req) {
   try {
-    // Extract authentication token from Authorization header
+    let token = null;
+    let authMethod = 'header';
+
+    // Try to extract authentication token from Authorization header first
     const authHeader = req.get('authorization');
-    if (!authHeader) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+      authMethod = 'header';
+    } 
+    // Fallback to token from query parameter (for web interface and EventSource)
+    else if (req.query.token) {
+      token = req.query.token;
+      authMethod = 'query_param';
+    }
+    // No authentication found
+    else {
       return {
         success: false,
-        reason: 'missing_authorization_header'
+        reason: 'missing_authentication'
       };
     }
 
-    // Validate Bearer token format
-    if (!authHeader.startsWith('Bearer ')) {
-      return {
-        success: false,
-        reason: 'invalid_authorization_format'
-      };
-    }
-
-    const token = authHeader.substring(7);
     if (!token || token.length === 0) {
       return {
         success: false,
@@ -158,13 +144,20 @@ export async function authenticateAgent(req) {
       };
     }
 
-    // Authenticate with connection manager
-    const isValid = await connectionManager.authenticateConnection(authHeader);
-    if (!isValid) {
-      return {
-        success: false,
-        reason: 'invalid_token'
-      };
+    // For web interface tokens, use simplified validation
+    if (authMethod === 'query_param' && token.startsWith('web-interface-token-')) {
+      // Allow web interface tokens (simplified auth for demo purposes)
+      // In production, implement proper token validation
+    } else {
+      // Authenticate with connection manager for Bearer tokens
+      const authHeaderForValidation = authMethod === 'header' ? authHeader : `Bearer ${token}`;
+      const isValid = await connectionManager.authenticateConnection(authHeaderForValidation);
+      if (!isValid) {
+        return {
+          success: false,
+          reason: 'invalid_token'
+        };
+      }
     }
 
     // Extract agent parameters from query string or body
@@ -182,6 +175,28 @@ export async function authenticateAgent(req) {
       cardTokens = [req.query.cardToken];
     }
 
+    // For web interface tokens, automatically get all available cards if none specified
+    if (cardTokens.length === 0 && authMethod === 'query_param' && token.startsWith('web-interface-token-')) {
+      try {
+        // Import card service to get available cards
+        const { listCards } = await import('../../services/card-service.js');
+        const availableCards = await listCards({ state: 'OPEN' });
+        
+        if (availableCards && availableCards.length > 0) {
+          cardTokens = availableCards.map(card => card.token);
+          logger.info({
+            agentId,
+            cardCount: cardTokens.length
+          }, 'Web interface auto-subscribed to all available cards');
+        }
+      } catch (error) {
+        logger.error({
+          error: error.message,
+          agentId
+        }, 'Failed to get available cards for web interface');
+      }
+    }
+
     // Validate card tokens
     if (cardTokens.length === 0) {
       return {
@@ -197,7 +212,8 @@ export async function authenticateAgent(req) {
       conversationId: req.query.conversationId,
       apiVersion: req.query.apiVersion || 'v1',
       clientVersion: req.get('x-client-version'),
-      platform: req.get('x-platform')
+      platform: req.get('x-platform'),
+      authMethod: authMethod
     };
 
     return {
@@ -231,6 +247,15 @@ export async function authenticateAgent(req) {
  * @param {string} requestId - Request ID for tracking.
  */
 function handleAuthenticationError(reason, res, requestId) {
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    logger.error({
+      requestId,
+      reason
+    }, 'Authentication error occurred after headers sent');
+    return;
+  }
+
   const errorMessages = {
     missing_authorization_header: 'Authorization header is required',
     invalid_authorization_format: 'Authorization header must use Bearer token format',
