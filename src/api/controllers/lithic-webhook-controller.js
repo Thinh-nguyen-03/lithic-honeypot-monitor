@@ -2,7 +2,6 @@ import { config } from "../../config/index.js";
 import { lithic_client } from "../../config/lithic-client.js";
 import * as lithic_service from "../../services/lithic-service.js";
 import * as supabase_service from "../../services/supabase-service.js";
-import alertService from "../../services/alert-service.js";
 import logger from "../../utils/logger.js";
 
 /**
@@ -123,55 +122,12 @@ export async function handleLithicEvent(req, res) {
         const transaction = await lithic_service.getTransaction(
           eventPayload.payload.token,
         );
+        // saveTransaction handles both database saving AND alert broadcasting with enriched data
         await supabase_service.saveTransaction(transaction);
         logger.info(
           { webhookId, transactionToken: eventPayload.payload.token },
           `Processed and saved transaction event.`,
         );
-
-        // NEW: Trigger real-time alert
-        try {
-          await alertService.broadcastAlert(transaction.card_token, {
-            alertType: 'NEW_TRANSACTION',
-            timestamp: new Date().toISOString(),
-            transactionId: transaction.token,
-            cardToken: transaction.card_token,
-            immediate: {
-              amount: `$${(transaction.amount / 100).toFixed(2)}`,
-              merchant: transaction.merchant?.descriptor || 'Unknown Merchant',
-              location: `${transaction.merchant?.city || ''}, ${transaction.merchant?.state || ''}, ${transaction.merchant?.country || ''}`.replace(/^,\s*|,\s*$/g, ''),
-              status: transaction.status,
-              network: transaction.network,
-              networkTransactionID: transaction.network_transaction_id
-            },
-            verification: {
-              mccCode: transaction.merchant?.mcc || '',
-              merchantType: transaction.merchant_info?.mcc_description || 'Unknown',
-              merchantCategory: transaction.merchant_info?.mcc_category || 'Unknown',
-              authorizationCode: transaction.authorization_code || '',
-              retrievalReference: transaction.acquirer_reference_number || ''
-            },
-            intelligence: {
-              isFirstTransaction: transaction.isFirstTransaction || false,
-              merchantHistory: transaction.merchantHistory || 'New merchant for this card',
-              geographicPattern: transaction.geographicPattern || 'New location for this card'
-            }
-          });
-          
-          logger.info({ 
-            webhookId, 
-            transactionToken: transaction.token,
-            cardToken: transaction.card_token 
-          }, 'Transaction processed and alert broadcast successfully');
-        } catch (alertError) {
-          // Log alert failure but don't break webhook processing
-          logger.warn({ 
-            err: alertError, 
-            webhookId, 
-            transactionToken: transaction.token,
-            cardToken: transaction.card_token 
-          }, 'Alert broadcast failed after successful transaction save');
-        }
         break;
 
       case "card.created":
