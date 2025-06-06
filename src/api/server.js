@@ -94,27 +94,13 @@ const configureRealTimeMiddleware = (req, res, next) => {
   // Handle SSE endpoints (only for GET requests that establish SSE connections)
   if ((req.path.startsWith('/alerts/stream') && req.method === 'GET') || 
       (req.path.startsWith('/api/mcp/subscribe') && req.method === 'GET')) {
-    // SSE-specific headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
-    res.setHeader('Transfer-Encoding', 'chunked');
-    
-    // CORS headers for SSE
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Cache-Control, Authorization, Content-Type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    
-    // Optimization settings
-    res.locals.skipCompression = true;
-    
-    // Set timeouts
+    // Set timeouts for SSE connections but don't set headers yet
+    // Let the connection manager handle headers to avoid conflicts
     req.setTimeout(300000); // 5 minutes
     res.setTimeout(300000); // 5 minutes
     
-    // Flush headers for streaming
-    res.flushHeaders();
+    // Optimization settings
+    res.locals.skipCompression = true;
   }
   // Handle other real-time endpoints (including POST to /api/mcp/subscribe)
   else if (req.path.startsWith('/alerts/') || req.path.startsWith('/api/mcp/')) {
@@ -146,6 +132,9 @@ app.options('*', (req, res) => {
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
   res.status(200).end();
 });
+
+// Serve static files from public directory
+app.use(express.static('public'));
 
 // Mount routes with appropriate base paths and middleware
 
