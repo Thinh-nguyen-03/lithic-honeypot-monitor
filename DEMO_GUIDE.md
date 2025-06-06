@@ -6,6 +6,8 @@ This system is a **real-time fraud detection platform** that:
 - Monitors transactions in real-time via Lithic API
 - Sends instant alerts to AI agents (Vapi) during live scammer conversations
 - Provides comprehensive transaction intelligence for scammer verification
+- **NEW**: Enhanced card access validation and security features
+- **NEW**: Advanced MCP (Model Context Protocol) tools for AI agent integration
 
 ---
 
@@ -35,19 +37,47 @@ curl http://localhost:3000/health
 
 ---
 
-## 📋 **Demo Flow Overview**
+## 🧪 **Step-by-Step Testing Guide**
 
-This demo showcases **4 key capabilities**:
-1. **🔒 Enterprise Validation System** - Input validation and security
-2. **⚡ Real-Time Alert System** - Instant transaction notifications
-3. **🤖 AI Integration (Vapi MCP)** - Smart scammer verification 
-4. **📊 Transaction Intelligence** - Comprehensive fraud analysis
+### **Phase 1: Unit Testing (Development Verification)**
 
----
+#### **1.1 Test Alert System (38 comprehensive tests)**
+```bash
+# Test core alert functionality
+node tests/unit/services/alert-service.test.js
+node tests/unit/controllers/alert-controller.test.js
+node tests/unit/routes/alert-routes.test.js
+```
 
-## 🔧 **Demo Step 1: System Health & Validation**
+#### **1.2 Test Enhanced MCP Controller (28 comprehensive tests including card access)**
+```bash
+# Test all MCP functionality including new card access tools
+node tests/unit/controllers/vapi-mcp-controller.test.js
+```
 
-### **1.1 Health Check**
+**New Card Access Tests Include:**
+- ✅ `list_available_cards` tool functionality
+- ✅ `get_card_details` with PAN access for scammer verification
+- ✅ Enhanced `get_card_info` with security validation
+- ✅ Invalid token handling and error responses
+- ✅ Security logging and monitoring
+- ✅ Rate limiting and access control
+
+#### **1.3 Test Validation Middleware (Enterprise-grade security)**
+```bash
+# Test enhanced validation including card access validation
+node tests/unit/middleware/validation.test.js
+```
+
+#### **1.4 Test Server Integration (15 comprehensive tests)**
+```bash
+# Test SSE middleware, CORS, performance optimization
+node tests/unit/controllers/server-integration.test.js
+```
+
+### **Phase 2: System Health Verification**
+
+#### **2.1 Basic Health Check**
 ```bash
 # Test basic system health
 curl http://localhost:3000/health
@@ -66,42 +96,250 @@ curl http://localhost:3000/health
 }
 ```
 
-### **1.2 Validation Middleware Test**
+#### **2.2 Enhanced MCP Health Check**
 ```bash
-# Test enterprise validation (should succeed with empty payload)
-curl -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{}"
+# Test MCP system health
+curl http://localhost:3000/api/mcp/health
 ```
 
-```bash
-# Test with invalid data types
-curl -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{\"token\": 123, \"amount\": \"invalid\"}"
+**Expected Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "status": "healthy",
+    "services": {
+      "mcpServer": {"status": "active"},
+      "alertService": {"status": "active", "activeConnections": 0},
+      "cardService": {"status": "active"},
+      "validationService": {"status": "active"}
+    }
+  }
+}
 ```
 
-**Demo Point:** *"Our system has enterprise-grade validation that processes webhook data securely."*
+### **Phase 3: Card Access System Testing**
 
----
-
-## ⚡ **Demo Step 2: Real-Time Alert System**
-
-### **2.1 Set Up AI Agent Connection**
+#### **3.1 Test List Available Cards Tool**
 ```bash
-# Subscribe an AI agent to real-time alerts
-curl -X POST "http://localhost:3000/api/mcp/subscribe" -H "Content-Type: application/json" -d "@test-mcp-subscribe.json"
+# List all available honeypot cards
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "tool_list_cards_001", 
+    "tool": "list_available_cards",
+    "parameters": {
+      "includeDetails": true,
+      "activeOnly": true
+    }
+  }'
 ```
 
-**Demo Point:** *"This endpoint establishes a real-time connection where AI agents receive instant notifications."*
-
-### **2.2 Test Alert Broadcasting**
-```bash
-# Send a test alert (open new terminal window)
-curl -X POST http://localhost:3000/alerts/test-alert -H "Content-Type: application/json" -d "{\"cardToken\": \"card_test_123\", \"alertType\": \"TEST_DEMO\", \"transactionData\": {\"amount\": \"$5.00\", \"merchant\": \"Demo Coffee Shop\", \"location\": \"Demo City, TX\"}}"
+**Expected Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "tool": "list_available_cards",
+    "success": true,
+    "availableCards": [
+      {
+        "cardToken": "card_honeypot_123",
+        "lastFour": "1234",
+        "state": "OPEN",
+        "type": "VIRTUAL",
+        "spendLimit": "$100.00",
+        "limitDuration": "MONTHLY",
+        "memo": "Honeypot card for scammer testing"
+      }
+    ],
+    "cardCount": 2,
+    "recommendations": [
+      "Use these cards for scammer verification calls",
+      "Active cards are available for immediate testing"
+    ]
+  }
+}
 ```
 
-**Expected:** The subscribed connection receives instant alert
-
-### **2.3 Connection Management**
+#### **3.2 Test Get Card Details Tool (Security Sensitive)**
 ```bash
-# Check active connections
+# Get detailed card information including PAN for scammer verification
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "tool_card_details_001", 
+    "tool": "get_card_details",
+    "parameters": {
+      "cardToken": "card_honeypot_123",
+      "includeTransactionHistory": false
+    }
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "tool": "get_card_details",
+    "success": true,
+    "cardToken": "card_honeypot_123",
+    "cardDetails": {
+      "pan": "4111111111111234",
+      "lastFour": "1234",
+      "state": "OPEN",
+      "type": "VIRTUAL",
+      "spendLimit": "$100.00"
+    },
+    "scammerVerification": {
+      "primaryCardNumber": "4111111111111234",
+      "verificationQuestions": [
+        "What's the full card number you're using?",
+        "Can you confirm the last four digits of your card?"
+      ],
+      "expectedAnswers": {
+        "fullCardNumber": "4111111111111234",
+        "lastFour": "1234"
+      }
+    },
+    "warnings": [
+      "This is sensitive payment card data",
+      "Use only for legitimate scammer verification"
+    ]
+  }
+}
+```
+
+#### **3.3 Test Enhanced Card Info Tool**
+```bash
+# Get comprehensive card information for scammer verification
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "tool_card_info_001", 
+    "tool": "get_card_info",
+    "parameters": {
+      "cardToken": "card_honeypot_123"
+    }
+  }'
+```
+
+#### **3.4 Test Card Access Validation**
+```bash
+# Test validation with invalid card token
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "tool_invalid_001", 
+    "tool": "get_card_details",
+    "parameters": {
+      "cardToken": "invalid_token_999"
+    }
+  }'
+```
+
+**Expected Error Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32001,
+    "message": "Card not found",
+    "data": {
+      "cardToken": "invalid_token_999",
+      "errorType": "CARD_NOT_FOUND",
+      "suggestions": [
+        "Verify the card token is correct",
+        "Use list_available_cards to see valid tokens"
+      ]
+    }
+  }
+}
+```
+
+### **Phase 4: AI Agent Subscription System**
+
+#### **4.1 Subscribe AI Agent to Real-Time Alerts**
+```bash
+# Subscribe an AI agent to receive alerts for specific cards
+curl -X POST http://localhost:3000/api/mcp/subscribe \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agentId": "ai-agent-demo-001", 
+    "cardTokens": ["card_honeypot_123", "card_honeypot_456"], 
+    "connectionType": "sse", 
+    "metadata": {
+      "sessionId": "demo-session-001", 
+      "conversationId": "conv-demo-001"
+    }
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "sessionId": "uuid-generated",
+    "agentId": "ai-agent-demo-001",
+    "monitoringCards": ["card_honeypot_123", "card_honeypot_456"],
+    "status": "subscribed",
+    "registrationResults": [
+      {"cardToken": "card_honeypot_123", "success": true},
+      {"cardToken": "card_honeypot_456", "success": true}
+    ]
+  }
+}
+```
+
+#### **4.2 Check Subscription Status**
+```bash
+# Get current subscription status
+curl -X GET "http://localhost:3000/api/mcp/subscription/status/YOUR_SESSION_ID"
+```
+
+#### **4.3 Test Connection Health**
+```bash
+# Check MCP connection statistics
+curl -X GET "http://localhost:3000/api/mcp/connections"
+```
+
+### **Phase 5: Real-Time Transaction Testing**
+
+#### **5.1 Simulate Live Transaction**
+```bash
+# Simulate a scammer using a honeypot card (open new terminal)
+curl -X POST http://localhost:3000/webhooks/lithic \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "transaction.created", 
+    "payload": {
+      "token": "txn_scammer_demo_001", 
+      "card_token": "card_honeypot_123", 
+      "amount": 100, 
+      "descriptor": "STARBUCKS #1234", 
+      "mcc": "5814", 
+      "status": "APPROVED", 
+      "created": "2025-01-30T14:30:00Z", 
+      "merchant": {
+        "acceptor_id": "STARBUCKS1234", 
+        "city": "SEATTLE", 
+        "state": "WA", 
+        "country": "USA"
+      }
+    }
+  }'
+```
+
+**What Happens:**
+1. ⚡ **Instant Alert**: Subscribed AI agent receives real-time notification
+2. 🤖 **Data Processing**: Alert includes transaction details and verification data
+3. 🎯 **Scammer Verification**: AI can now ask verification questions
+
+#### **5.2 Check Alert Metrics**
+```bash
+# Verify alerts were sent
 curl http://localhost:3000/alerts/metrics
 ```
 
@@ -119,229 +357,251 @@ curl http://localhost:3000/alerts/metrics
 }
 ```
 
-**Demo Point:** *"The system tracks all active AI agents and can broadcast to multiple agents simultaneously."*
+### **Phase 6: Advanced Intelligence Testing**
 
----
-
-## 🤖 **Demo Step 3: AI Integration (Vapi MCP)**
-
-### **3.1 AI Agent Subscription**
+#### **6.1 Transaction Intelligence Analysis**
 ```bash
-# Enhanced MCP subscription with multiple cards
-curl -X POST http://localhost:3000/api/mcp/subscribe -H "Content-Type: application/json" -d "{\"agentId\": \"ai-agent-demo-001\", \"cardTokens\": [\"card_demo_001\", \"card_demo_002\"], \"connectionType\": \"sse\", \"metadata\": {\"sessionId\": \"demo-session-001\", \"conversationId\": \"conv-demo-001\"}}"
-```
-
-**Expected Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "sessionId": "uuid",
-    "agentId": "ai-agent-demo-001",
-    "monitoringCards": ["card_demo_001", "card_demo_002"],
-    "status": "subscribed"
-  }
-}
-```
-
-### **3.2 Natural Language Transaction Query**
-```bash
-# Test AI-powered transaction analysis
-curl -X POST http://localhost:3000/api/mcp/query -H "Content-Type: application/json" -d "{\"toolCallId\": \"tool_demo_001\", \"tool\": \"search_transactions\", \"parameters\": {\"query\": \"Show me large transactions from today that might be suspicious\", \"limit\": 5}}"
-```
-
-**Demo Point:** *"AI agents can ask natural language questions and get intelligent responses formatted for scammer verification."*
-
-### **3.3 Check Connection Status**
-```bash
-# Get MCP connection status
-curl http://localhost:3000/api/mcp/health
-```
-
-**Expected Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "healthy",
-    "services": {
-      "mcpServer": {"status": "active"},
-      "alertService": {"status": "active", "activeConnections": 1}
+# Get comprehensive transaction pattern analysis
+curl -X POST "http://localhost:3000/api/mcp/intelligence/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queryType": "pattern_analysis", 
+    "filters": {
+      "cardToken": "card_honeypot_123", 
+      "startDate": "2025-01-30T00:00:00Z", 
+      "endDate": "2025-01-30T23:59:59Z"
+    }, 
+    "options": {
+      "includeRiskScore": true, 
+      "includePatterns": true
     }
-  }
-}
+  }'
 ```
 
-**Demo Point:** *"The system automatically generates verification questions and detects discrepancies in scammer stories."*
-
----
-
-## 📊 **Demo Step 4: Transaction Intelligence**
-
-### **4.1 Comprehensive Transaction Analysis**
+#### **6.2 Natural Language Query Testing**
 ```bash
-# Get detailed transaction intelligence
-curl -X POST "http://localhost:3000/api/mcp/intelligence/analyze" -H "Content-Type: application/json" -d "{\"queryType\": \"pattern_analysis\", \"filters\": {\"cardToken\": \"card_demo_001\", \"startDate\": \"2025-01-30T00:00:00Z\", \"endDate\": \"2025-01-30T23:59:59Z\"}, \"options\": {\"includeRiskScore\": true, \"includePatterns\": true}}"
-```
-
-**Expected Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "statistics": {
-      "totalTransactions": 15,
-      "totalAmount": "$234.56",
-      "averageAmount": "$15.64",
-      "merchantCount": 8,
-      "suspiciousCount": 3
-    },
-    "patterns": {
-      "geographicAnomalies": ["Multiple states in 1 hour"],
-      "merchantAnomalies": ["First time using gas stations"],
-      "amountAnomalies": ["Round dollar amounts: $1.00, $5.00"]
-    },
-    "riskAssessment": {
-      "overallRisk": "HIGH",
-      "confidence": 0.87,
-      "indicators": ["rapid_transactions", "geographic_spread", "round_amounts"]
+# Test AI-powered natural language transaction queries
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "tool_nl_query_001", 
+    "tool": "search_transactions",
+    "parameters": {
+      "query": "Show me large transactions from today that might be suspicious", 
+      "limit": 5
     }
-  }
-}
+  }'
 ```
 
-### **4.2 MCP Connection Management**
+#### **6.3 Merchant Intelligence**
 ```bash
-# Get MCP connection statistics
-curl -X GET "http://localhost:3000/api/mcp/connections"
+# Get detailed merchant information for verification
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "tool_merchant_001", 
+    "tool": "get_merchant_info",
+    "parameters": {
+      "merchantId": "STARBUCKS1234"
+    }
+  }'
 ```
 
-**Demo Point:** *"The system provides deep merchant intelligence for comprehensive scammer verification."*
+### **Phase 7: Security and Validation Testing**
 
-### **4.3 Real-Time Connection Status**
+#### **7.1 Test Input Validation**
 ```bash
-# Check specific AI agent connection status
-curl -X GET "http://localhost:3000/api/mcp/subscription/status/YOUR_SESSION_ID"
+# Test enterprise-grade validation with malicious input
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "<script>alert(\"xss\")</script>", 
+    "tool": "invalid_tool",
+    "parameters": {
+      "query": "<img src=x onerror=alert(1)>"
+    }
+  }'
 ```
 
-**Expected Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "active",
-    "sessionId": "YOUR_SESSION_ID", 
-    "agentId": "ai-agent-demo-001",
-    "connectionHealth": 0.98,
-    "monitoringCards": ["card_demo_001", "card_demo_002"],
-    "alertsReceived": 5,
-    "lastActivity": "2025-01-30T14:25:00Z"
-  }
-}
+**Expected:** Validation blocks malicious input and returns appropriate error
+
+#### **7.2 Test Rate Limiting**
+```bash
+# Test multiple rapid requests (security monitoring)
+for i in {1..10}; do
+  curl -X POST http://localhost:3000/api/mcp/query \
+    -H "Content-Type: application/json" \
+    -d '{
+      "toolCallId": "tool_rate_test_'$i'", 
+      "tool": "get_card_details",
+      "parameters": {"cardToken": "card_honeypot_123"}
+    }' &
+done
+wait
+```
+
+#### **7.3 Test Security Logging**
+```bash
+# Verify security events are properly logged
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolCallId": "tool_security_test_001", 
+    "tool": "get_card_details",
+    "parameters": {
+      "cardToken": "card_honeypot_123",
+      "includeTransactionHistory": true
+    }
+  }'
+```
+
+**Expected:** Security-sensitive access is logged with masked tokens and IP tracking
+
+### **Phase 8: Load and Performance Testing**
+
+#### **8.1 Multiple Agent Connections**
+```bash
+# Test multiple simultaneous AI agent connections
+for i in {1..5}; do
+  curl -X POST "http://localhost:3000/api/mcp/subscribe" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "agentId": "load-test-agent-'$i'", 
+      "cardTokens": ["card_honeypot_123"], 
+      "connectionType": "sse"
+    }' &
+done
+wait
+```
+
+#### **8.2 Stress Test Alert System**
+```bash
+# Test high-frequency alert processing
+for i in {1..20}; do
+  curl -X POST http://localhost:3000/alerts/test-alert \
+    -H "Content-Type: application/json" \
+    -d '{
+      "cardToken": "card_honeypot_123", 
+      "alertType": "STRESS_TEST_'$i'", 
+      "transactionData": {
+        "amount": "$1.00", 
+        "merchant": "Test Merchant '$i'"
+      }
+    }' &
+done
+wait
+```
+
+#### **8.3 Performance Metrics**
+```bash
+# Check system performance under load
+curl http://localhost:3000/api/mcp/connections
+curl http://localhost:3000/alerts/metrics
 ```
 
 ---
 
-## 🎭 **Demo Step 5: Live Scammer Simulation**
+## 📋 **Demo Flow Overview**
 
-### **5.1 Simulate Transaction Flow**
-```bash
-# Simulate a scammer using a honeypot card
-curl -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{\"event_type\": \"transaction.created\", \"payload\": {\"token\": \"txn_scammer_demo_001\", \"card_token\": \"card_demo_001\", \"amount\": 100, \"descriptor\": \"STARBUCKS #1234\", \"mcc\": \"5814\", \"status\": \"APPROVED\", \"created\": \"2025-01-30T14:30:00Z\", \"merchant\": {\"acceptor_id\": \"STARBUCKS1234\", \"city\": \"SEATTLE\", \"state\": \"WA\", \"country\": \"USA\"}}}"
-```
-
-**Demo Flow:**
-1. ⚡ **Instant Alert**: AI agent receives real-time notification
-2. 🤖 **AI Processing**: Agent analyzes transaction data
-3. 🎯 **Verification**: Agent generates verification questions
-4. 🕵️ **Scammer Detection**: Identifies discrepancies
-
-### **5.2 Show Real-Time Alert**
-The subscribed AI agent instantly receives:
-```json
-{
-  "alertType": "NEW_TRANSACTION",
-  "timestamp": "2025-01-30T14:30:00Z",
-  "transactionId": "txn_scammer_demo_001",
-  "immediate": {
-    "amount": "$1.00",
-    "merchant": "Starbucks #1234",
-    "location": "Seattle, WA, USA",
-    "status": "APPROVED"
-  },
-  "verification": {
-    "mccCode": "5814",
-    "merchantType": "Coffee Shop",
-    "authorizationCode": "123456"
-  },
-  "intelligence": {
-    "isFirstTransaction": true,
-    "merchantHistory": "New merchant for this card",
-    "riskLevel": "MEDIUM"
-  }
-}
-```
-
-**Demo Point:** *"The AI agent can now ask: 'I see you just made a purchase. What did you buy at Starbucks?' and verify the scammer's response."*
+This demo showcases **6 enhanced capabilities**:
+1. **🔒 Enterprise Security & Validation** - Input sanitization, rate limiting, security logging
+2. **💳 Advanced Card Access System** - Secure card data access for scammer verification
+3. **⚡ Real-Time Alert System** - Sub-second transaction notifications
+4. **🤖 Enhanced AI Integration (MCP)** - Comprehensive card access tools and intelligence
+5. **📊 Transaction Intelligence** - Pattern analysis and fraud detection
+6. **🧪 Comprehensive Testing** - 89+ tests covering all functionality
 
 ---
 
-## 📈 **Demo Step 6: System Performance**
+## 🎭 **Live Scammer Verification Demo**
 
-### **6.1 Load Testing**
-```bash
-# Test multiple simultaneous connections (run each in separate terminal)
-curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_load_test_1&sessionId=load-test-1" -H "Authorization: Bearer demo-token"
-curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_load_test_2&sessionId=load-test-2" -H "Authorization: Bearer demo-token"
-curl -X POST "http://localhost:3000/api/alerts/subscribe?cardTokens=card_load_test_3&sessionId=load-test-3" -H "Authorization: Bearer demo-token"
-```
+### **Enhanced Scammer Interaction Scenario**
 
-### **6.2 Performance Metrics**
-```bash
-# Check system performance
-curl http://localhost:3000/api/alerts/metrics
-```
+**Setup**: AI agent uses new card access tools for enhanced verification
 
-**Demo Point:** *"The system can handle multiple AI agents simultaneously with sub-second response times."*
+1. **Pre-Call Setup**:
+   ```bash
+   # AI agent gets available cards
+   curl -X POST http://localhost:3000/api/mcp/query \
+     -d '{"tool": "list_available_cards", "parameters": {"activeOnly": true}}'
+   
+   # AI agent gets specific card details for verification
+   curl -X POST http://localhost:3000/api/mcp/query \
+     -d '{"tool": "get_card_details", "parameters": {"cardToken": "card_honeypot_123"}}'
+   ```
+
+2. **Live Transaction Occurs**: $1.00 at Shell Gas Station, Main St, Dallas, TX
+
+3. **Real-Time Alert with Enhanced Data**:
+   ```json
+   {
+     "alertType": "NEW_TRANSACTION",
+     "immediate": {
+       "amount": "$1.00",
+       "merchant": "Shell Gas #1234",
+       "location": "Dallas, TX, USA"
+     },
+     "verification": {
+       "cardNumber": "4111111111111234",
+       "expectedLastFour": "1234",
+       "mccCode": "5542",
+       "merchantType": "Gas Station"
+     }
+   }
+   ```
+
+4. **Enhanced AI Verification Questions**:
+   - Agent: *"I see you just made a transaction. What's the full card number you used?"*
+   - Scammer: *"4111-1111-1111-5678"* (WRONG - AI knows it should be 1234)
+   - Agent: *"That doesn't match our records. Can you confirm the last four digits?"*
+   - Scammer: *"5678"* (WRONG AGAIN)
+   - Agent: *"Our system shows different digits. What did you purchase?"*
+   - Scammer: *"Coffee at Starbucks"* (WRONG - was gas station)
+
+**Result**: **Multiple verification failures caught in real-time!** 🎯
 
 ---
 
-## 🏆 **Demo Talking Points**
+## 🏆 **Enhanced System Capabilities**
 
-### **Key Achievements Demonstrated:**
+### **🔒 Enterprise Security Features**
+- ✅ Advanced input validation and XSS prevention
+- ✅ Rate limiting for sensitive card data access
+- ✅ Comprehensive security logging with IP tracking
+- ✅ Masked token logging for privacy protection
+- ✅ Authentication and authorization for all endpoints
 
-#### **🔒 Enterprise Security**
-- Input validation prevents injection attacks
-- Authentication required for all real-time connections
-- Rate limiting and error handling
+### **💳 Advanced Card Access System**
+- ✅ `list_available_cards` - List all honeypot cards with filtering
+- ✅ `get_card_details` - Full card data including PAN for verification
+- ✅ Enhanced `get_card_info` - Intelligent card information with context
+- ✅ Security-sensitive access logging and monitoring
+- ✅ Error handling with helpful suggestions
 
-#### **⚡ Real-Time Performance**
-- Sub-second alert delivery
-- Scalable to multiple AI agents
-- Zero message loss during high-frequency scenarios
+### **⚡ Real-Time Performance**
+- ✅ Sub-second alert delivery to multiple AI agents
+- ✅ Scalable connection management (tested with 5+ simultaneous agents)
+- ✅ Zero message loss during high-frequency scenarios
+- ✅ SSE middleware optimization for streaming performance
 
-#### **🤖 AI-Optimized Integration**
-- Natural language query processing
-- MCP-compliant JSON-RPC 2.0 protocol
-- Context-aware scammer verification
+### **🤖 Enhanced AI Integration**
+- ✅ MCP-compliant JSON-RPC 2.0 protocol implementation
+- ✅ Natural language query processing with context awareness
+- ✅ Advanced scammer verification question generation
+- ✅ Comprehensive transaction pattern analysis
 
-#### **📊 Comprehensive Intelligence**
-- Pattern analysis and risk assessment
-- Merchant relationship mapping
-- Geographic and behavioral anomaly detection
+### **📊 Comprehensive Intelligence**
+- ✅ Real-time transaction pattern detection
+- ✅ Geographic and behavioral anomaly analysis
+- ✅ Merchant relationship mapping and verification
+- ✅ Risk assessment with confidence scoring
 
-### **Technical Highlights:**
-- **Node.js v22** with ES Modules
-- **Real-time SSE/WebSocket** connections
-- **Supabase PostgreSQL** for data persistence
-- **Lithic API** integration for virtual cards
-- **Enterprise-grade** validation and error handling
-
-### **Implementation Details:**
-- **Alert System**: 38 passing unit tests ✅
-- **MCP Controller**: 20 comprehensive tests ✅
-- **Validation Middleware**: Enterprise-grade input sanitization ✅
-- **Real-Time Architecture**: Server-Sent Events with WebSocket fallback ✅
+### **🧪 Comprehensive Testing Coverage**
+- ✅ **89+ Total Tests**: Unit, integration, and E2E testing
+- ✅ **Card Access Tests**: 8 comprehensive tests for new card access features
+- ✅ **Security Tests**: Validation, rate limiting, logging verification
+- ✅ **MCP Protocol Tests**: 28 tests covering all MCP functionality
+- ✅ **Performance Tests**: Load testing and stress testing capabilities
 
 ---
 
@@ -353,6 +613,11 @@ curl -X DELETE "http://localhost:3000/api/mcp/unsubscribe/YOUR_SESSION_ID?reason
 
 # Check final metrics
 curl http://localhost:3000/alerts/metrics
+curl http://localhost:3000/api/mcp/connections
+
+# Run comprehensive test suite to verify system integrity
+node tests/unit/controllers/vapi-mcp-controller.test.js
+node tests/unit/services/alert-service.test.js
 ```
 
 ---
@@ -360,64 +625,53 @@ curl http://localhost:3000/alerts/metrics
 ## 🎯 **Demo Success Criteria**
 
 ✅ **Real-time alerts** delivered in <1 second  
-✅ **AI agents** successfully subscribed and receiving data  
-✅ **Scammer verification** questions generated automatically  
-✅ **Transaction intelligence** providing comprehensive analysis  
+✅ **AI agents** successfully subscribed and receiving enhanced data  
+✅ **Card access tools** providing secure PAN access for verification  
+✅ **Security validation** preventing malicious inputs and monitoring access  
+✅ **Scammer verification** with comprehensive card and transaction data  
 ✅ **System performance** handling multiple concurrent connections  
-✅ **Enterprise security** preventing malicious inputs  
+✅ **Enterprise security** with logging, rate limiting, and validation  
+✅ **Comprehensive testing** with 89+ tests covering all functionality  
 
 ---
 
-## 🎪 **Scammer Interaction Example**
+## 💡 **Windows PowerShell Commands**
 
-**Scenario**: Scammer uses honeypot card for $1 verification
+### **For Better JSON Formatting:**
+```powershell
+# Format JSON responses
+curl http://localhost:3000/health | ConvertFrom-Json | ConvertTo-Json -Depth 10
 
-**Live Demo Flow**:
-1. **Transaction occurs**: $1.00 at Shell Gas Station, Main St, Dallas, TX
-2. **AI agent receives instant alert** with full transaction data
-3. **Agent initiates verification**:
-   - Agent: *"I see you just made a transaction. Can you tell me what you purchased?"*
-   - Scammer: *"I bought coffee at Starbucks"*
-   - Agent: *[Knows it was gas station]* "That's interesting. What location was that?"
-   - Scammer: *"The one on Broadway"*
-   - Agent: *[Knows it was Main St]* "Can you confirm the exact amount?"
-   - Scammer: *"About $5"*
-   - Agent: *[Knows it was $1.00]* "I'm seeing some inconsistencies..."
+# Run multiple commands in parallel
+1..5 | ForEach-Object -Parallel {
+  curl -X POST "http://localhost:3000/api/mcp/subscribe" -H "Content-Type: application/json" -d "{\"agentId\": \"test-$_\", \"cardTokens\": [\"card_test_$_\"]}"
+}
+```
 
-**Result**: **Scammer caught in real-time with precise transaction intelligence!** 🎯
+### **For Testing Multiple Endpoints:**
+```powershell
+# Test all card access tools
+$cardTests = @(
+  '{"tool": "list_available_cards", "parameters": {"includeDetails": true}}',
+  '{"tool": "get_card_details", "parameters": {"cardToken": "card_honeypot_123"}}',
+  '{"tool": "get_card_info", "parameters": {"cardToken": "card_honeypot_123"}}'
+)
+
+$cardTests | ForEach-Object {
+  $body = '{"toolCallId": "' + [guid]::NewGuid() + '", ' + $_.Substring(1)
+  curl -X POST "http://localhost:3000/api/mcp/query" -H "Content-Type: application/json" -d $body
+  Start-Sleep 1
+}
+```
 
 ---
 
 ## 📝 **Demo Notes**
 
-- **Preparation Time**: 5 minutes (system startup)
-- **Demo Duration**: 15-20 minutes for full walkthrough
-- **Audience**: Technical team members, stakeholders
-- **Key Message**: Production-ready fraud detection system that turns honeypot cards into intelligent scammer traps with real-time AI assistance
+- **Preparation Time**: 5 minutes (system startup + test verification)
+- **Demo Duration**: 25-30 minutes for full enhanced walkthrough
+- **Testing Duration**: 10-15 minutes for comprehensive test suite
+- **Audience**: Technical team members, stakeholders, security teams
+- **Key Message**: Production-ready fraud detection system with enterprise-grade security, comprehensive card access tools, and extensive testing coverage
 
-**Final Result**: *A sophisticated fraud detection platform that enables instant scammer verification during live conversations.* 🚀
-
----
-
-## 💡 **Windows Command Tips**
-
-### **For Command Prompt (cmd):**
-- All commands above work as-is
-- Use double quotes for JSON data
-- No line continuations needed
-
-### **For PowerShell:**
-- Use `curl.exe` instead of `curl` to force real curl
-- Or use single-line commands as shown above
-- Example: `curl.exe -X POST http://localhost:3000/webhooks/lithic -H "Content-Type: application/json" -d "{}"`
-
-### **For Better JSON Formatting:**
-```bash
-# Option 1: Use Python (if installed)
-curl http://localhost:3000/health | python -m json.tool
-
-# Option 2: Use PowerShell (native)
-curl http://localhost:3000/health | ConvertFrom-Json | ConvertTo-Json -Depth 10
-
-# Option 3: Copy output to VS Code and format with Shift+Alt+F
-``` 
+**Final Result**: *A sophisticated, thoroughly tested fraud detection platform that enables instant, secure scammer verification with comprehensive card access tools and enterprise-grade security.* 🚀
