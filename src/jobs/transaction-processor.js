@@ -75,7 +75,7 @@ async function checkForNewTransactions() {
         `Successfully processed and saved new transactions.`,
       );
       try {
-        const stats = await reportingService.getTransactionStats();
+        const stats = await reporting_service.getTransactionStats();
         logger.info(
           {
             totalTransactions: stats.total_transactions,
