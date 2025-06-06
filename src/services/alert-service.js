@@ -263,25 +263,53 @@ class AlertService extends EventEmitter {
    */
   formatTransactionAlert(transactionData) {
     try {
+      // Calculate amount with proper fallbacks for both Lithic raw data and parsed data
+      let rawAmount = 0;
+      
+      // Try multiple sources for amount data
+      if (transactionData.cardholder_amount !== undefined) {
+        // Already parsed transaction data
+        rawAmount = transactionData.cardholder_amount;
+      } else if (transactionData.merchant_amount !== undefined) {
+        rawAmount = transactionData.merchant_amount;
+      } else if (transactionData.amount !== undefined) {
+        // Direct amount field
+        rawAmount = transactionData.amount;
+      } else if (transactionData.events && transactionData.events[0]?.amounts?.cardholder?.amount !== undefined) {
+        // Lithic raw transaction structure
+        rawAmount = transactionData.events[0].amounts.cardholder.amount;
+      } else if (transactionData.events && transactionData.events[0]?.amounts?.merchant?.amount !== undefined) {
+        rawAmount = transactionData.events[0].amounts.merchant.amount;
+      }
+      
+      const formattedAmount = typeof rawAmount === 'number' && !isNaN(rawAmount) 
+        ? `$${(rawAmount / 100).toFixed(2)}`
+        : '$0.00';
+
       const alert = {
         alertType: 'NEW_TRANSACTION',
         timestamp: new Date().toISOString(),
         transactionId: transactionData.token || transactionData.id,
         cardToken: transactionData.card_token,
         immediate: {
-          amount: `$${(transactionData.amount / 100).toFixed(2)}`,
+          amount: formattedAmount,
           merchant: transactionData.merchant?.descriptor || 'Unknown Merchant',
           location: this.formatLocation(transactionData.merchant),
-          status: transactionData.status || 'PENDING',
+          status: transactionData.status || transactionData.events?.[0]?.result || 'PENDING',
           network: transactionData.network || 'UNKNOWN',
-          networkTransactionId: transactionData.network_transaction_id || ''
+          networkTransactionId: transactionData.network_transaction_id || 
+                                 transactionData.events?.[0]?.network_info?.visa?.transaction_id ||
+                                 transactionData.events?.[0]?.network_info?.mastercard?.transaction_id ||
+                                 ''
         },
         verification: {
           mccCode: transactionData.merchant?.mcc || '',
           merchantType: transactionData.merchant_info?.mcc_description || 'Unknown',
           merchantCategory: transactionData.merchant_info?.mcc_category || 'Unknown',
           authorizationCode: transactionData.authorization_code || '',
-          retrievalReference: transactionData.acquirer_reference_number || ''
+          retrievalReference: transactionData.acquirer_reference_number || 
+                             transactionData.events?.[0]?.network_info?.acquirer?.retrieval_reference_number ||
+                             ''
         },
         intelligence: {
           isFirstTransaction: transactionData.isFirstTransaction || false,
@@ -289,6 +317,17 @@ class AlertService extends EventEmitter {
           geographicPattern: transactionData.geographicPattern || 'New location for this card'
         }
       };
+
+      logger.debug({
+        rawAmount,
+        formattedAmount,
+        transactionId: transactionData.token || transactionData.id,
+        hasEvents: !!transactionData.events,
+        eventCount: transactionData.events?.length || 0,
+        merchantDescriptor: transactionData.merchant?.descriptor,
+        status: transactionData.status,
+        network: transactionData.network
+      }, 'Formatted transaction alert - debug data');
       
       return alert;
     } catch (error) {
