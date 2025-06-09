@@ -96,7 +96,7 @@ class AlertService extends EventEmitter {
   /**
    * Broadcast alert to all agents monitoring a specific card
    * @param {string} cardToken - Card token that triggered the alert
-   * @param {Object} alertData - Transaction alert data
+   * @param {Object} alertData - Transaction alert data (can be raw transaction data or pre-formatted alert)
    * @returns {Object} Broadcast result with success/failure counts
    */
   async broadcastAlert(cardToken, alertData) {
@@ -114,8 +114,24 @@ class AlertService extends EventEmitter {
         return result;
       }
       
-      // Format the alert
-      const formattedAlert = this.formatTransactionAlert(alertData);
+      // Check if alert is already formatted (has alertType, immediate, verification, intelligence)
+      // or if it's raw transaction data that needs formatting
+      let formattedAlert;
+      if (alertData.alertType && alertData.immediate && alertData.verification && alertData.intelligence) {
+        // Already formatted alert object - use as is
+        formattedAlert = alertData;
+        logger.debug({ 
+          cardToken, 
+          transactionId: alertData.transactionId 
+        }, 'Using pre-formatted alert data');
+      } else {
+        // Raw transaction data - needs formatting
+        formattedAlert = this.formatTransactionAlert(alertData);
+        logger.debug({ 
+          cardToken, 
+          transactionId: alertData.token || alertData.id 
+        }, 'Formatting raw transaction data for alert');
+      }
       
       // Broadcast to all connected sessions
       for (const sessionId of sessions) {
