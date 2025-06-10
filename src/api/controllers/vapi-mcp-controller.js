@@ -703,6 +703,12 @@ export async function processQuery(req, res) {
       case 'get_transaction':
         queryResult = await handleGetTransaction(parameters, requestId);
         break;
+      case 'get_transaction_details':
+        queryResult = await handleGetTransactionDetails(parameters, requestId);
+        break;
+      case 'get_recent_transactions':
+        queryResult = await handleGetRecentTransactions(parameters, requestId);
+        break;
       case 'get_merchant_info':
         queryResult = await handleMerchantInfo(parameters, requestId);
         break;
@@ -766,6 +772,95 @@ export async function processQuery(req, res) {
       },
       id: null
     });
+  }
+}
+
+/**
+ * Handle getting detailed transaction information by transaction ID.
+ * @private
+ * @param {Object} parameters - Query parameters
+ * @param {string} requestId - Request ID for tracking
+ * @returns {Promise<Object>} Formatted transaction details
+ */
+async function handleGetTransactionDetails(parameters, requestId) {
+  const { transactionId } = parameters;
+  
+  if (!transactionId) {
+    throw new Error('Transaction ID is required for get_transaction_details');
+  }
+  
+  logger.debug({
+    requestId,
+    transactionId
+  }, 'Processing get_transaction_details request');
+
+  try {
+    const transaction = await supabaseService.getTransactionDetails(transactionId);
+    
+    if (!transaction) {
+      throw new Error(`Transaction not found: ${transactionId}`);
+    }
+    
+    return {
+      transaction: formatDetailedTransactionForAI(transaction),
+      verification: generateTransactionVerificationData(transaction),
+      merchantIntelligence: await generateMerchantIntelligence(transaction),
+      patterns: await generatePatternAnalysis(transaction),
+      summary: `Detailed information for transaction ${transactionId}`
+    };
+  } catch (error) {
+    logger.error({
+      requestId,
+      transactionId,
+      error: error.message
+    }, 'Failed to get transaction details');
+    throw error;
+  }
+}
+
+/**
+ * Handle getting recent transactions.
+ * @private
+ * @param {Object} parameters - Query parameters
+ * @param {string} requestId - Request ID for tracking
+ * @returns {Promise<Object>} Formatted recent transactions
+ */
+async function handleGetRecentTransactions(parameters, requestId) {
+  const { limit = 10, cardToken } = parameters;
+  
+  logger.debug({
+    requestId,
+    limit,
+    cardToken
+  }, 'Processing get_recent_transactions request');
+
+  try {
+    const transactions = await reportingService.getRecentTransactionsForAgent(parseInt(limit));
+    
+    return {
+      transactions: transactions.map(formatTransactionForAI),
+      summary: {
+        totalTransactions: transactions.length,
+        cardToken: cardToken || 'all_cards',
+        timeframe: 'recent'
+      },
+      verificationSuggestions: generateVerificationSuggestions(transactions),
+      patterns: {
+        merchantTypes: extractMerchantTypes(transactions),
+        averageAmount: calculateAverageAmount(transactions),
+        geographicSpread: extractUniqueLocations(transactions),
+        totalSpent: calculateTotalSpent(transactions),
+        uniqueMerchants: countUniqueMerchants(transactions)
+      }
+    };
+  } catch (error) {
+    logger.error({
+      requestId,
+      limit,
+      cardToken,
+      error: error.message
+    }, 'Failed to get recent transactions');
+    throw error;
   }
 }
 

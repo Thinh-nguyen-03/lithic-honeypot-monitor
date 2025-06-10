@@ -24,6 +24,8 @@ const vapiMCPRequestSchema = Joi.object({
     .required()
     .valid(
       'get_transaction', 
+      'get_transaction_details',
+      'get_recent_transactions',
       'search_transactions', 
       'get_merchant_info', 
       'get_card_info',
@@ -53,6 +55,11 @@ const vapiMCPRequestSchema = Joi.object({
     merchantId: Joi.string()
       .trim()
       .max(50),
+
+    transactionId: Joi.string()
+      .trim()
+      .max(100)
+      .description('Transaction ID for detailed lookup'),
 
     // New parameters for card access tools
     includeDetails: Joi.boolean()
