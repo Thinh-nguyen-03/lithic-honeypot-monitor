@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍯 Honeypot Transaction Monitoring - Live Interface</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .panel h2 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            color: #4a5568;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .connection-status.connected {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 2px solid #48bb78;
+        }
+
+        .connection-status.disconnected {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 2px solid #f56565;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-success { background: #48bb78; }
+        .status-error { background: #f56565; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            background: none;
+            border: none;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #718096;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            flex: 1;
+        }
+
+        .tab:hover {
+            color: #4a5568;
+            background: #f7fafc;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: #f7fafc;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            margin: 5px;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-success { background: linear-gradient(135deg, #48bb78 0%, #38a169 100%); }
+        .btn-danger { background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%); }
+        .btn-warning { background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); }
+        .btn-info { background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%); }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .input-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .response-panel {
+            grid-column: 1 / -1;
+            background: #1a202c;
+            color: #e2e8f0;
+            border-radius: 15px;
+            padding: 25px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .response-panel h3 {
+            color: #48bb78;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }
+
+        .json-container {
+            background: #2d3748;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        .json-container h4 {
+            color: #48bb78;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .json-container pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        .json-key { color: #79b8ff; }
+        .json-string { color: #b392f0; }
+        .json-number { color: #ffab70; }
+        .json-boolean { color: #85e89d; }
+        .json-null { color: #ffa7c4; }
+
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .alert {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .alert-info {
+            background: #bee3f8;
+            color: #2a4365;
+            border: 1px solid #63b3ed;
+        }
+
+        .alert-warning {
+            background: #fefcbf;
+            color: #744210;
+            border: 1px solid #d69e2e;
+        }
+
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #48bb78;
+        }
+
+        .alert-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #f56565;
+        }
+
+        @media (max-width: 768px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .input-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .quick-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                margin: 5px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🍯 Honeypot Transaction Monitoring</h1>
+            <p>Live AI Agent & Transaction Simulation Interface</p>
+        </div>
+
+        <div class="main-grid">
+            <!-- AI Agent Panel -->
+            <div class="panel">
+                <h2>🤖 AI Agent Interface</h2>
+                
+                <div class="connection-status disconnected" id="agentStatus">
+                    <span class="status-indicator status-error"></span>
+                    <span>Not Connected</span>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('cards-tab', this)">Cards</button>
+                    <button class="tab" onclick="switchTab('transactions-tab', this)">Transactions</button>
+                    <button class="tab" onclick="switchTab('alerts-tab', this)">Alerts</button>
+                    <button class="tab" onclick="switchTab('system-tab', this)">System</button>
+                </div>
+
+                <!-- Cards Tab -->
+                <div id="cards-tab" class="tab-content active">
+                    <div class="quick-actions">
+                        <button class="btn" onclick="listCards()">📋 List Cards</button>
+                        <button class="btn btn-success" onclick="subscribeToAlerts()">📡 Subscribe to Alerts</button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="cardToken">Card Token:</label>
+                        <input type="text" id="cardToken" placeholder="card_honeypot_123">
+                        <div style="margin-top: 10px;">
+                            <button class="btn btn-warning" onclick="getCardDetails()">🔒 Get Card Details (PAN)</button>
+                            <button class="btn" onclick="getCardInfo()">💳 Get Card Info</button>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        ⚠️ Card details include sensitive PAN data for scammer verification scenarios
+                    </div>
+                </div>
+
+                <!-- Transactions Tab -->
+                <div id="transactions-tab" class="tab-content">
+                    <div class="quick-actions">
+                        <button class="btn" onclick="getRecentTransactions()">🕒 Recent Transactions</button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="searchQuery">Search Query:</label>
+                        <input type="text" id="searchQuery" placeholder="coffee shops, large transactions, suspicious activity">
+                        <button class="btn" onclick="searchTransactions()" style="margin-top: 10px;">🔍 Search</button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="transactionId">Transaction ID:</label>
+                        <input type="text" id="transactionId" placeholder="txn_abc123">
+                        <button class="btn" onclick="getTransactionDetails()" style="margin-top: 10px;">📊 Get Details</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="merchantName">Merchant Name:</label>
+                        <input type="text" id="merchantName" placeholder="STARBUCKS">
+                        <button class="btn" onclick="getMerchantInfo()" style="margin-top: 10px;">🏪 Get Merchant Info</button>
+                    </div>
+                </div>
+
+                <!-- Alerts Tab -->
+                <div id="alerts-tab" class="tab-content">
+                    <div class="quick-actions">
+                        <button class="btn" onclick="getSubscriptionStatus()">📡 Connection Status</button>
+                        <button class="btn btn-danger" onclick="unsubscribeFromAlerts()">🚫 Unsubscribe</button>
+                    </div>
+
+                    <div class="alert alert-info">
+                        💡 Use this tab to manage real-time alert subscriptions for transaction monitoring
+                    </div>
+                </div>
+
+                <!-- System Tab -->
+                <div id="system-tab" class="tab-content">
+                    <div class="quick-actions">
+                        <button class="btn btn-success" onclick="checkHealth()">🏥 Health Check</button>
+                        <button class="btn" onclick="getSystemInfo()">ℹ️ System Info</button>
+                    </div>
+
+                    <div class="alert alert-success">
+                        ✅ System status and health monitoring tools
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaction Simulator Panel -->
+            <div class="panel">
+                <h2>🎭 Transaction Simulator</h2>
+                
+                <div class="form-group">
+                    <label for="simCardToken">Card Token for Simulation:</label>
+                    <input type="text" id="simCardToken" placeholder="card_honeypot_123">
+                </div>
+
+                <div class="form-group">
+                    <label>Custom Transaction Builder:</label>
+                    <div class="input-grid">
+                        <input type="number" id="customAmount" placeholder="Amount (e.g., 5.99)" step="0.01">
+                        <input type="text" id="customDescriptor" placeholder="Merchant Descriptor">
+                        <input type="text" id="customMCC" placeholder="MCC Code (e.g., 5966)">
+                        <input type="text" id="customAcceptorId" placeholder="Acceptor ID">
+                        <input type="text" id="customCity" placeholder="City">
+                        <input type="text" id="customState" placeholder="State (e.g., CA)">
+                    </div>
+                    <div class="quick-actions">
+                        <button class="btn btn-info" onclick="generateRandomTransaction()">🎲 Generate Random</button>
+                        <button class="btn btn-warning" onclick="createCustomTransaction()">🔧 Create Transaction</button>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        💡 Use "Generate Random" to auto-fill with suspicious transaction data, then click "Create Transaction" to simulate.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Response Panel -->
+        <div class="response-panel">
+            <h3>📊 Server Responses</h3>
+            <div id="responseContainer">
+                <div class="alert alert-info">
+                    📡 Responses will appear here when you interact with the system...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const SERVER_URL = window.location.origin;
+        let agentSessionId = null;
+        let eventSource = null;
+
+        // Suspicious MCC codes for random generation
+        const suspiciousMCCs = [
+            "5960", "5961", "5962", "5963", "5964", "5965", "5966", "5967", "5968", "5969",
+            "4829", "6010", "6011", "6012", "6051", "6211",
+            "6300", "6381", "7273", "7276", "7277", "7278", "7297"
+        ];
+
+        // Utility Functions
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function syntaxHighlight(json) {
+            if (typeof json != "string") {
+                json = JSON.stringify(json, undefined, 2);
+            }
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                var cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        function addResponse(title, data, status = 'success') {
+            const container = document.getElementById('responseContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const statusClass = status === 'success' ? 'status-success' : 
+                               status === 'error' ? 'status-error' : 'status-warning';
+            
+            const responseHtml = `
+                <div class="json-container">
+                    <h4>
+                        <span class="status-indicator ${statusClass}"></span>
+                        ${title} - ${timestamp}
+                    </h4>
+                    <pre>${syntaxHighlight(data)}</pre>
+                </div>
+            `;
+            
+            container.insertAdjacentHTML('afterbegin', responseHtml);
+            
+            // Limit to last 10 responses
+            const responses = container.querySelectorAll('.json-container');
+            if (responses.length > 10) {
+                responses[responses.length - 1].remove();
+            }
+        }
+
+        async function makeApiRequest(endpoint, method = 'GET', body = null) {
+            try {
+                const options = {
+                    method,
+                    headers: { 'Content-Type': 'application/json' }
+                };
+                
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(`${SERVER_URL}${endpoint}`, options);
+                const data = await response.json();
+                return { success: response.ok, data, status: response.status };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function makeMcpRequest(tool, parameters = {}) {
+            const payload = {
+                toolCallId: generateUUID(),
+                tool: tool,
+                parameters: parameters
+            };
+
+            const result = await makeApiRequest('/api/mcp/query', 'POST', payload);
+            
+            if (result.success) {
+                addResponse(`MCP Tool: ${tool}`, result.data);
+            } else {
+                addResponse(`MCP Error: ${tool}`, result.error || result.data, 'error');
+            }
+            
+            return result;
+        }
+
+        function switchTab(tabId, tabButton) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabId).classList.add('active');
+            
+            // Add active class to clicked tab
+            tabButton.classList.add('active');
+        }
+
+        function setLoading(button, loading = true) {
+            if (loading) {
+                button.disabled = true;
+                button.textContent = button.textContent.replace(/🔄\s*/, '') + ' 🔄';
+            } else {
+                button.disabled = false;
+                button.textContent = button.textContent.replace(/\s*🔄/, '');
+            }
+        }
+
+        // MCP Tool Functions
+        async function listCards() {
+            const result = await makeMcpRequest('list_available_cards', {
+                includeDetails: true,
+                activeOnly: false
+            });
+            
+            // Auto-fill the first available card token into input fields
+            if (result.success && result.data && result.data.result && result.data.result.cards && result.data.result.cards.length > 0) {
+                const firstCardToken = result.data.result.cards[0].token;
+                
+                // Fill the main card token input
+                const cardTokenInput = document.getElementById('cardToken');
+                if (cardTokenInput) {
+                    cardTokenInput.value = firstCardToken;
+                    // Add visual feedback
+                    cardTokenInput.style.backgroundColor = '#c6f6d5';
+                    setTimeout(() => { cardTokenInput.style.backgroundColor = ''; }, 2000);
+                }
+                
+                // Fill the simulation card token input
+                const simCardTokenInput = document.getElementById('simCardToken');
+                if (simCardTokenInput) {
+                    simCardTokenInput.value = firstCardToken;
+                    // Add visual feedback
+                    simCardTokenInput.style.backgroundColor = '#c6f6d5';
+                    setTimeout(() => { simCardTokenInput.style.backgroundColor = ''; }, 2000);
+                }
+                
+                // Add a visual indication that the fields were auto-filled
+                addResponse('Auto-Fill Success', {
+                    message: 'First available card token auto-filled into input fields',
+                    cardToken: firstCardToken,
+                    totalCardsFound: result.data.result.cards.length,
+                    cardDetails: {
+                        lastFour: result.data.result.cards[0].lastFour,
+                        state: result.data.result.cards[0].state,
+                        memo: result.data.result.cards[0].memo
+                    }
+                }, 'success');
+            } else {
+                // Debug: Log the actual structure we received
+                console.log('Debug - Actual response structure:', result);
+                addResponse('Auto-Fill Debug', {
+                    message: 'Could not auto-fill card token - check response structure',
+                    responseStructure: result,
+                    expectedPath: 'result.data.result.cards[0].token'
+                }, 'warning');
+            }
+        }
+
+        async function getCardDetails() {
+            const cardToken = document.getElementById('cardToken').value;
+            if (!cardToken) {
+                addResponse('Card Details Error', { error: 'Please provide a card token' }, 'error');
+                return;
+            }
+            
+            await makeMcpRequest('get_card_details', { cardToken });
+        }
+
+        async function getCardInfo() {
+            const cardToken = document.getElementById('cardToken').value;
+            await makeMcpRequest('get_card_info', cardToken ? { cardToken } : {});
+        }
+
+        async function searchTransactions() {
+            const query = document.getElementById('searchQuery').value;
+            if (!query) {
+                addResponse('Search Error', { error: 'Please provide a search query' }, 'error');
+                return;
+            }
+            
+            await makeMcpRequest('search_transactions', { query });
+        }
+
+        async function getTransactionDetails() {
+            const transactionId = document.getElementById('transactionId').value;
+            if (!transactionId) {
+                addResponse('Transaction Details Error', { error: 'Please provide a transaction ID' }, 'error');
+                return;
+            }
+            
+            // Debug: Log what we're actually sending
+            const parameters = { transactionId };
+            console.log('Sending get_transaction_details with parameters:', parameters);
+            addResponse('Debug - Parameters Being Sent', { 
+                tool: 'get_transaction_details', 
+                parameters: parameters 
+            });
+            
+            await makeMcpRequest('get_transaction_details', parameters);
+        }
+
+        async function getRecentTransactions() {
+            await makeMcpRequest('get_recent_transactions', {});
+        }
+
+        async function getMerchantInfo() {
+            const merchantName = document.getElementById('merchantName').value;
+            if (!merchantName) {
+                addResponse('Merchant Info Error', { error: 'Please provide a merchant name' }, 'error');
+                return;
+            }
+            
+            await makeMcpRequest('get_merchant_info', { merchantId: merchantName });
+        }
+
+        async function subscribeToAlerts() {
+            const cardToken = document.getElementById('cardToken').value || 'card_test_123';
+            agentSessionId = generateUUID();
+            
+            // Direct SSE connection approach - the subscription happens via the SSE stream itself
+            updateConnectionStatus(true);
+            startSSEConnection(cardToken);
+            
+            addResponse('Alert Subscription', { 
+                status: 'connecting', 
+                cardToken, 
+                agentId: agentSessionId,
+                message: 'Establishing SSE connection...' 
+            });
+        }
+
+        async function unsubscribeFromAlerts() {
+            if (eventSource) {
+                // Close the SSE connection first
+                eventSource.close();
+                eventSource = null;
+                updateConnectionStatus(false);
+                
+                addResponse('Alert Unsubscription', { 
+                    status: 'disconnected',
+                    agentId: agentSessionId,
+                    reason: 'user_request',
+                    message: 'SSE connection closed successfully'
+                });
+                
+                // If we have a session ID from an MCP subscription, clean it up
+                if (agentSessionId) {
+                    try {
+                        const result = await makeApiRequest(`/api/mcp/unsubscribe/${agentSessionId}?reason=user_request`, 'DELETE');
+                        
+                        if (result.success) {
+                            addResponse('MCP Session Cleanup', result.data);
+                        } else {
+                            // Don't treat this as an error since the main connection is already closed
+                            addResponse('MCP Session Note', { 
+                                message: 'Session cleanup completed (may not have been registered)',
+                                details: result.error || result.data 
+                            });
+                        }
+                    } catch (error) {
+                        addResponse('MCP Session Note', { 
+                            message: 'Session cleanup completed (connection was SSE-only)',
+                            error: error.message 
+                        });
+                    }
+                }
+            } else {
+                addResponse('Unsubscription Note', { message: 'No active connection to close' });
+            }
+        }
+
+        async function getSubscriptionStatus() {
+            if (eventSource && agentSessionId) {
+                // Get SSE connection status
+                const sseStatus = {
+                    status: eventSource.readyState === 0 ? 'connecting' :
+                           eventSource.readyState === 1 ? 'connected' :
+                           eventSource.readyState === 2 ? 'disconnected' : 'unknown',
+                    readyState: eventSource.readyState,
+                    agentId: agentSessionId,
+                    url: eventSource.url,
+                    connectionType: 'SSE'
+                };
+                
+                addResponse('SSE Connection Status', sseStatus);
+                
+                // Try to get MCP session status if available
+                try {
+                    const result = await makeApiRequest(`/api/mcp/subscription/status/${agentSessionId}?metrics=true`);
+                    
+                    if (result.success) {
+                        addResponse('MCP Session Status', result.data);
+                    } else {
+                        addResponse('MCP Session Status', { 
+                            message: 'No MCP session (SSE-only connection)',
+                            details: result.error || result.data 
+                        });
+                    }
+                } catch (error) {
+                    addResponse('MCP Session Status', { 
+                        message: 'No MCP session (SSE-only connection)',
+                        error: error.message 
+                    });
+                }
+            } else {
+                addResponse('Subscription Status', { 
+                    status: 'not_connected', 
+                    message: 'No active subscription',
+                    hasEventSource: !!eventSource,
+                    hasAgentId: !!agentSessionId
+                });
+            }
+        }
+
+        async function checkHealth() {
+            const result = await makeApiRequest('/health');
+            if (result.success) {
+                addResponse('Health Check', result.data);
+            } else {
+                addResponse('Health Check Failed', result.error || result.data, 'error');
+            }
+        }
+
+        async function getSystemInfo() {
+            const result = await makeApiRequest('/system/info');
+            if (result.success) {
+                addResponse('System Info', result.data);
+            } else {
+                addResponse('System Info Failed', result.error || result.data, 'error');
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusElement = document.getElementById('agentStatus');
+            const indicator = statusElement.querySelector('.status-indicator');
+            const text = statusElement.querySelector('span:last-child');
+            
+            if (connected) {
+                statusElement.className = 'connection-status connected';
+                indicator.className = 'status-indicator status-success';
+                text.textContent = 'Connected';
+            } else {
+                statusElement.className = 'connection-status disconnected';
+                indicator.className = 'status-indicator status-error';
+                text.textContent = 'Not Connected';
+            }
+        }
+
+        function startSSEConnection(cardToken) {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            // Generate a web interface token for authentication
+            const webToken = `web-interface-token-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            eventSource = new EventSource(`${SERVER_URL}/alerts/stream/${cardToken}?agentId=${agentSessionId}&apiVersion=v1&token=${webToken}`);
+            
+            eventSource.onopen = function(event) {
+                addResponse('SSE Connection', { status: 'opened', cardToken, agentId: agentSessionId });
+            };
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addResponse('Real-time Alert', data, 'success');
+                } catch (e) {
+                    addResponse('SSE Message', { rawData: event.data });
+                }
+            };
+
+            // Handle specific SSE events
+            eventSource.addEventListener('welcome', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addResponse('Welcome Message', data, 'success');
+                    updateConnectionStatus(true);
+                } catch (e) {
+                    addResponse('Welcome Event', { rawData: event.data });
+                }
+            });
+
+            eventSource.addEventListener('connection', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addResponse('Connection Event', data, 'success');
+                    if (data.status === 'connected') {
+                        updateConnectionStatus(true);
+                    }
+                } catch (e) {
+                    addResponse('Connection Event', { rawData: event.data });
+                }
+            });
+
+            eventSource.addEventListener('transaction', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addResponse('🚨 Live Transaction Alert', data, 'warning');
+                } catch (e) {
+                    addResponse('Transaction Event', { rawData: event.data });
+                }
+            });
+
+            eventSource.addEventListener('error', function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addResponse('SSE Error Event', data, 'error');
+                } catch (e) {
+                    addResponse('SSE Error Event', { rawData: event.data });
+                }
+            });
+
+            eventSource.onerror = function(event) {
+                addResponse('SSE Connection Error', { 
+                    error: 'Connection failed', 
+                    state: eventSource.readyState,
+                    stateText: eventSource.readyState === 0 ? 'CONNECTING' :
+                               eventSource.readyState === 1 ? 'OPEN' :
+                               eventSource.readyState === 2 ? 'CLOSED' : 'UNKNOWN'
+                }, 'error');
+                
+                if (eventSource.readyState === 2) { // CLOSED
+                    updateConnectionStatus(false);
+                }
+            };
+        }
+
+        // Transaction Simulation Functions
+        function generateRandomTransaction() {
+            const cardToken = document.getElementById('simCardToken').value;
+            if (!cardToken) {
+                addResponse('Random Transaction Error', { error: 'Please provide a card token first' }, 'error');
+                return;
+            }
+
+            const mcc = suspiciousMCCs[Math.floor(Math.random() * suspiciousMCCs.length)];
+            const amount = (Math.floor(Math.random() * 10000) + 100) / 100; // $1.00 to $100.00
+            const merchants = ['Global Teleserv', 'Win Big Promo', 'Consumer Reward', 'Cash Advance Co'];
+            const merchant = merchants[Math.floor(Math.random() * merchants.length)];
+            const cities = ['NEW YORK', 'LOS ANGELES', 'UNKNOWN', 'OFFSHORE'];
+            const states = ['NY', 'CA', 'XX', 'XX'];
+            const cityIndex = Math.floor(Math.random() * cities.length);
+
+            document.getElementById('customAmount').value = amount.toFixed(2);
+            document.getElementById('customDescriptor').value = merchant;
+            document.getElementById('customMCC').value = mcc;
+            document.getElementById('customAcceptorId').value = 'ACCP' + Math.random().toString(36).substr(2, 8).toUpperCase();
+            document.getElementById('customCity').value = cities[cityIndex];
+            document.getElementById('customState').value = states[cityIndex];
+
+            addResponse('🎲 Random Transaction Generated', {
+                success: true,
+                generatedData: {
+                    amount: `$${amount.toFixed(2)}`,
+                    merchant: merchant,
+                    mcc: mcc,
+                    location: `${cities[cityIndex]}, ${states[cityIndex]}`,
+                    cardToken: cardToken
+                },
+                message: 'Random suspicious transaction data generated! Click "Create Transaction" to simulate.'
+            });
+        }
+
+        async function createCustomTransaction() {
+            const cardToken = document.getElementById('simCardToken').value;
+            const amount = parseFloat(document.getElementById('customAmount').value);
+            const descriptor = document.getElementById('customDescriptor').value;
+            const mcc = document.getElementById('customMCC').value;
+            const acceptorId = document.getElementById('customAcceptorId').value;
+            const city = document.getElementById('customCity').value;
+            const state = document.getElementById('customState').value;
+
+            if (!cardToken || !amount || !descriptor) {
+                addResponse('Transaction Error', { 
+                    error: 'Please provide cardToken, amount, and descriptor' 
+                }, 'error');
+                return;
+            }
+
+            const payload = {
+                cardToken,
+                amount: Math.round(amount * 100), // Convert to cents
+                descriptor,
+                mcc,
+                merchant_acceptor_id: acceptorId,
+                city,
+                state,
+                country: 'USA'
+            };
+
+            const result = await makeApiRequest('/webhooks/simulate', 'POST', payload);
+            
+            if (result.success) {
+                addResponse('Transaction Simulation', result.data);
+            } else {
+                addResponse('Transaction Simulation Failed', result.error || result.data, 'error');
+            }
+        }
+
+        // Initialize the interface
+        document.addEventListener('DOMContentLoaded', function() {
+            addResponse('Interface Initialized', {
+                status: 'ready',
+                serverUrl: SERVER_URL,
+                message: 'Honeypot Transaction Monitoring Interface is ready!',
+                availableTools: [
+                    'list_available_cards',
+                    'get_card_details',
+                    'get_card_info', 
+                    'subscribe_to_alerts',
+                    'search_transactions',
+                    'get_transaction_details',
+                    'get_recent_transactions',
+                    'get_merchant_info'
+                ]
+            });
+        });
+    </script>
+</body>
+</html> 

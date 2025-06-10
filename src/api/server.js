@@ -3,11 +3,14 @@ import { config } from "../config/index.js";
 import { supabase_client } from "../config/supabase-client.js";
 import logger from "../utils/logger.js";
 import os from "os";
+import path from "path";
+import { fileURLToPath } from "url";
 
 // Import route modules
 import lithic_webhook_routes from "./routes/lithic-webhook-routes.js";
 import alert_routes from "./routes/alert-routes.js";
 import vapi_mcp_routes from "./routes/vapi-mcp-routes.js";
+import system_routes from "./routes/system-routes.js";
 
 // Import services for enhanced health check
 import alertService from "../services/alert-service.js";
@@ -133,8 +136,12 @@ app.options('*', (req, res) => {
   res.status(200).end();
 });
 
-// Serve static files from public directory
-app.use(express.static('public'));
+// Get current file directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static files from frontend/public directory
+app.use(express.static(path.join(__dirname, '../../frontend/public')));
 
 // Mount routes with appropriate base paths and middleware
 
@@ -143,6 +150,9 @@ app.use("/alerts", alert_routes);
 
 // Vapi MCP server endpoints (JSON parsing already applied globally above)
 app.use("/api/mcp", vapi_mcp_routes);
+
+// System information and data endpoints
+app.use("/system", system_routes);
 
 // Webhook routes with raw body parsing for signature verification
 app.use(
