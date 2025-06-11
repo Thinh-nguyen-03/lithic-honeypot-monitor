@@ -24,6 +24,7 @@ export async function getRecentTransactionsForAgent(limit = 5) {
     if (!data) return [];
 
     return data.map((t) => ({
+      token: t.token, // Include the transaction token
       timestamp: new Date(t.created_at).toLocaleString(),
       merchant: t.merchant_name || "Unknown Merchant",
       location:

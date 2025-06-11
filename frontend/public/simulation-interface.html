@@ -680,15 +680,7 @@
                 return;
             }
             
-            // Debug: Log what we're actually sending
-            const parameters = { transactionId };
-            console.log('Sending get_transaction_details with parameters:', parameters);
-            addResponse('Debug - Parameters Being Sent', { 
-                tool: 'get_transaction_details', 
-                parameters: parameters 
-            });
-            
-            await makeMcpRequest('get_transaction_details', parameters);
+            await makeMcpRequest('get_transaction_details', { transactionId });
         }
 
         async function getRecentTransactions() {
