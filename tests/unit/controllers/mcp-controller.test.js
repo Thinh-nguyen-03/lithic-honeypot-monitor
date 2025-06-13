@@ -1,6 +1,6 @@
 /**
- * Unit tests for Enhanced Vapi MCP Controller
- * Run this file with: node tests/unit/controllers/vapi-mcp-controller.test.js
+ * Unit tests for Enhanced MCP Controller
+ * Run this file with: node tests/unit/controllers/mcp-controller.test.js
  */
 
 import { 
@@ -161,7 +161,7 @@ const tests = [
     testFn: async () => {
       // Test the subscription logic pattern
       const subscriptionData = {
-        agentId: 'agent_vapi_123',
+        agentId: 'agent_ai_123',
         cardTokens: ['card_token_abc', 'card_token_def'],
         connectionType: 'sse',
         metadata: {
@@ -1364,14 +1364,14 @@ const tests = [
 ];
 
 // Run the test suite
-console.log('🧪 Starting Enhanced Vapi MCP Controller Unit Tests...\n');
+    console.log('🧪 Starting Enhanced MCP Controller Unit Tests...\n');
 
 try {
-  const results = await runTestSuite('Enhanced Vapi MCP Controller', tests);
+      const results = await runTestSuite('Enhanced MCP Controller', tests);
   
   const summary = results.summary();
   if (summary.failed === 0) {
-    console.log('\n🎉 All Enhanced Vapi MCP Controller tests passed!');
+    console.log('\n🎉 All Enhanced MCP Controller tests passed!');
     console.log(`✅ Tested MCP alert subscription management`);
     console.log(`✅ Tested natural language query processing`);
     console.log(`✅ Tested transaction data formatting for AI`);
@@ -1384,6 +1384,6 @@ try {
     process.exit(1);
   }
 } catch (error) {
-  console.error('💥 Enhanced Vapi MCP Controller test suite failed:', error);
+      console.error('💥 Enhanced MCP Controller test suite failed:', error);
   process.exit(1);
 } 

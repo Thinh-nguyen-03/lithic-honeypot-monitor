@@ -6,7 +6,7 @@
 console.log('Starting validation middleware tests...');
 
 import { 
-  validateVapiRequest, 
+  validateMCPRequest, 
   validateAlertRequest, 
   validateIntelligenceQuery,
   schemas 
@@ -98,9 +98,9 @@ function assert(condition, message) {
   }
 }
 
-// ========== VAPI REQUEST VALIDATION TESTS ==========
+// ========== MCP REQUEST VALIDATION TESTS ==========
 
-async function testVapiValidRequests() {
+async function testMCPValidRequests() {
   // Test valid get_transaction request
   const { req, res, next } = createMockContext({
     toolCallId: 'call_123',
@@ -111,14 +111,14 @@ async function testVapiValidRequests() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   assert(req.validatedData, 'Should have validated data');
   assert(req.validatedData.tool === 'get_transaction', 'Tool should be preserved');
   assert(req.validatedData.parameters.limit === 10, 'Limit should be preserved');
   assert(req.requestId, 'Should have request ID');
 }
 
-async function testVapiInvalidRequests() {
+async function testMCPInvalidRequests() {
   // Test missing required field
   const { req, res, next, getResponse } = createMockContext({
     tool: 'get_transaction',
@@ -126,7 +126,7 @@ async function testVapiInvalidRequests() {
     // Missing toolCallId
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   const response = getResponse();
   assert(response.statusCode === 400, 'Should return 400 for missing field');
   assert(response.responseData.error === 'Validation Error', 'Should have correct error type');
@@ -134,7 +134,7 @@ async function testVapiInvalidRequests() {
   assert(response.responseData.requestId, 'Should have request ID in error');
 }
 
-async function testVapiMaliciousInput() {
+async function testMCPMaliciousInput() {
   // Test SQL injection attempt
   const { req, res, next } = createMockContext({
     toolCallId: 'call_123',
@@ -145,20 +145,20 @@ async function testVapiMaliciousInput() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   assert(req.validatedData, 'Should sanitize and accept');
   assert(!req.validatedData.parameters.query.includes("'"), 'Should remove SQL injection characters');
   assert(!req.validatedData.parameters.query.includes("--"), 'Should remove SQL comments');
 }
 
-async function testVapiOversizedPayload() {
+async function testMCPOversizedPayload() {
   const { req, res, next, getResponse } = createMockContext({});
   req.get = (header) => {
     if (header === 'content-length') return '2000000'; // 2MB
     return null;
   };
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   const response = getResponse();
   assert(response.statusCode === 413, 'Should return 413 for oversized payload');
   assert(response.responseData.details.includes('too large'), 'Should indicate payload too large');
@@ -279,7 +279,7 @@ async function testErrorResponseFormat() {
     // Invalid request - missing all required fields
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   const response = getResponse();
   
   assert(response.responseData.error, 'Should have error field');
@@ -309,7 +309,7 @@ async function testPerformanceUnderLoad() {
       }
     });
     
-    await validateVapiRequest(req, res, next);
+    await validateMCPRequest(req, res, next);
   }
   
   const duration = Date.now() - start;
@@ -332,7 +332,7 @@ async function testCardAccessListAvailableCards() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   assert(req.validatedData, 'Should have validated data');
   assert(req.validatedData.tool === 'list_available_cards', 'Tool should be preserved');
   assert(req.validatedData.parameters.includeDetails === true, 'includeDetails should be preserved');
@@ -350,7 +350,7 @@ async function testCardAccessGetCardDetails() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   assert(req.validatedData, 'Should have validated data');
   assert(req.validatedData.tool === 'get_card_details', 'Tool should be preserved');
   assert(req.validatedData.parameters.cardToken === 'card_abc123def', 'Card token should be preserved');
@@ -367,7 +367,7 @@ async function testCardAccessMissingCardToken() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   const response = getResponse();
   assert(response.statusCode === 400, 'Should return 400 for missing card token');
   assert(response.responseData.field === 'parameters.cardToken', 'Should identify missing card token field');
@@ -384,7 +384,7 @@ async function testCardTokenFormatValidation() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   const response = getResponse();
   assert(response.statusCode === 400, 'Should return 400 for invalid card token format');
   assert(response.responseData.field === 'parameters.cardToken', 'Should identify card token field');
@@ -409,7 +409,7 @@ async function testCardTokenSuspiciousPatterns() {
       }
     });
     
-    await validateVapiRequest(req, res, next);
+    await validateMCPRequest(req, res, next);
     const response = getResponse();
     assert(response.statusCode === 400, `Should reject suspicious token: ${suspiciousToken}`);
     assert(response.responseData.details.includes('suspicious patterns'), 'Should indicate suspicious pattern');
@@ -426,7 +426,7 @@ async function testCardTokenTooShort() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   const response = getResponse();
   assert(response.statusCode === 400, 'Should return 400 for card token too short');
   assert(response.responseData.field === 'parameters.cardToken', 'Should identify card token field');
@@ -444,7 +444,7 @@ async function testListCardsInvalidBooleanParams() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   const response = getResponse();
   assert(response.statusCode === 400, 'Should return 400 for invalid boolean parameter');
   // The Joi schema should catch this during initial validation
@@ -460,7 +460,7 @@ async function testEnhancedCardInfoValidation() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   assert(req.validatedData, 'Should have validated data');
   assert(req.validatedData.parameters.cardToken === 'valid_card_token_123', 'Should preserve valid card token');
 }
@@ -488,7 +488,7 @@ async function testCardAccessSecurityLogging() {
     }
   });
   
-  await validateVapiRequest(req, res, next);
+  await validateMCPRequest(req, res, next);
   
   // Restore original logger
   global.console = originalLogger;
@@ -503,11 +503,11 @@ async function testCardAccessSecurityLogging() {
 async function runAllTests() {
   console.log('\n🧪 Running Validation Middleware Tests\n');
   
-  console.log('📋 Vapi Request Validation Tests:');
-  await runTest('Valid Vapi requests', testVapiValidRequests);
-  await runTest('Invalid Vapi requests', testVapiInvalidRequests);
-  await runTest('Malicious input sanitization', testVapiMaliciousInput);
-  await runTest('Oversized payload rejection', testVapiOversizedPayload);
+  console.log('📋 MCP Request Validation Tests:');
+  await runTest('Valid MCP requests', testMCPValidRequests);
+  await runTest('Invalid MCP requests', testMCPInvalidRequests);
+  await runTest('Malicious input sanitization', testMCPMaliciousInput);
+  await runTest('Oversized payload rejection', testMCPOversizedPayload);
   
   console.log('\n📋 Alert Request Validation Tests:');
   await runTest('Valid alert requests', testAlertValidRequests);

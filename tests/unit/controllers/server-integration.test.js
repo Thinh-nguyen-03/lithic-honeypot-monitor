@@ -149,7 +149,7 @@ const tests = [
       // Test route mounting logic
       const routes = [
         { path: '/alerts', name: 'alert_routes' },
-        { path: '/api/mcp', name: 'vapi_mcp_routes' },
+        { path: '/api/mcp', name: 'mcp_routes' },
         { path: '/webhooks', name: 'lithic_webhook_routes' }
       ];
       

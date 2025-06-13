@@ -1,6 +1,6 @@
 /**
- * Unit tests for Enhanced Vapi MCP Routes
- * Run this file with: node tests/unit/routes/vapi-mcp-routes.test.js
+ * Unit tests for Enhanced MCP Routes
+ * Run this file with: node tests/unit/routes/mcp-routes.test.js
  */
 
 import { 
@@ -13,7 +13,7 @@ import {
 } from '../../helpers/test-helpers.js';
 
 // Mock the MCP controller since it doesn't exist yet (Task 4.2)
-const mockVapiMcpController = {
+const mockMcpController = {
   subscribeToAlerts: (req, res, next) => res.json({ success: true }),
   unsubscribeFromAlerts: (req, res, next) => res.json({ success: true }),
   getSubscriptionStatus: (req, res, next) => res.json({ success: true }),
@@ -66,7 +66,7 @@ function createMockRequestWithParams(params = {}, query = {}, body = {}) {
     requestId: generators.sessionId(),
     startTime: Date.now(),
     get: (header) => {
-      if (header === 'user-agent') return 'Vapi-Agent/1.0';
+      if (header === 'user-agent') return 'AI-Agent/1.0';
       if (header === 'content-length') return '200';
       if (header === 'mcp-version') return '2.0';
       if (header === 'content-type') return 'application/json';
@@ -218,7 +218,7 @@ const tests = [
     name: 'should validate alert subscription request format',
     testFn: async () => {
       const validSubscription = {
-        agentId: 'agent_vapi_123',
+        agentId: 'agent_ai_123',
         cardTokens: ['card_token_abc', 'card_token_def'],
         connectionType: 'sse',
         metadata: {
@@ -306,7 +306,7 @@ const tests = [
       
       assert(logResult.isValid, 'Should validate request with all required fields');
       assert(logResult.logData.mcpVersion === '2.0', 'Should capture MCP version header');
-      assert(logResult.logData.userAgent === 'Vapi-Agent/1.0', 'Should capture Vapi user agent');
+      assert(logResult.logData.userAgent === 'AI-Agent/1.0', 'Should capture AI user agent');
       assert(logResult.logData.contentType === 'application/json', 'Should capture content type');
       
       const invalidReq = { 
@@ -424,7 +424,7 @@ const tests = [
       
       const subscriptionResult = {
         sessionId: 'uuid',
-        agentId: 'agent_vapi_123',
+        agentId: 'agent_ai_123',
         monitoringCards: ['card_token_abc'],
         connectionType: 'sse',
         status: 'subscribed'
@@ -434,7 +434,7 @@ const tests = [
       
       assert(mcpResponse.jsonrpc === '2.0', 'Should have correct JSON-RPC version');
       assert(mcpResponse.result.status === 'subscribed', 'Should include subscription status');
-      assert(mcpResponse.result.agentId === 'agent_vapi_123', 'Should include agent ID');
+      assert(mcpResponse.result.agentId === 'agent_ai_123', 'Should include agent ID');
       assert(Array.isArray(mcpResponse.result.monitoringCards), 'Should include monitoring cards array');
       assert(mcpResponse.id === null, 'Should have null id for notification responses');
       
@@ -471,8 +471,8 @@ const tests = [
       
       const mcpRequestLogger = createMcpMiddleware('mcpRequestLogger');
       const validateMcpSession = createMcpMiddleware('validateMcpSession');
-      const validateVapiRequest = createMcpMiddleware('validateVapiRequest');
-      const controllerHandler = createMcpMiddleware('vapiMcpController');
+      const validateMCPRequest = createMcpMiddleware('validateMCPRequest');
+      const controllerHandler = createMcpMiddleware('mcpController');
       
       // Simulate MCP middleware execution chain
       const req = createMockRequestWithParams({ transactionId: 'txn_123' });
@@ -481,7 +481,7 @@ const tests = [
       
       mcpRequestLogger(req, res, () => {
         validateMcpSession(req, res, () => {
-          validateVapiRequest(req, res, () => {
+          validateMCPRequest(req, res, () => {
             controllerHandler(req, res, next);
           });
         });
@@ -490,24 +490,24 @@ const tests = [
       assert(middlewareChain.length === 4, 'Should execute all MCP middleware in chain');
       assert(middlewareChain[0] === 'mcpRequestLogger', 'Should execute MCP logger middleware first');
       assert(middlewareChain[1] === 'validateMcpSession', 'Should execute MCP session validation second');
-      assert(middlewareChain[2] === 'validateVapiRequest', 'Should execute Vapi request validation third');
-      assert(middlewareChain[3] === 'vapiMcpController', 'Should execute controller handler last');
+      assert(middlewareChain[2] === 'validateMCPRequest', 'Should execute MCP request validation third');
+      assert(middlewareChain[3] === 'mcpController', 'Should execute controller handler last');
     }
   }
 ];
 
 // Run the test suite
-console.log('🧪 Starting Enhanced Vapi MCP Routes Unit Tests...\n');
+console.log('🧪 Starting Enhanced MCP Routes Unit Tests...\n');
 
 try {
-  const results = await runTestSuite('Enhanced Vapi MCP Routes', tests);
+  const results = await runTestSuite('Enhanced MCP Routes', tests);
   
   const summary = results.summary();
   if (summary.failed === 0) {
-    console.log('\n🎉 All Enhanced Vapi MCP Routes tests passed!');
+    console.log('\n🎉 All Enhanced MCP Routes tests passed!');
     console.log(`✅ Validated MCP-compliant error handling`);
     console.log(`✅ Validated session and transaction parameter formats`);
-    console.log(`✅ Validated request/response structure for Vapi integration`);
+    console.log(`✅ Validated request/response structure for AI agent integration`);
     console.log(`✅ Validated middleware chain execution for MCP protocol`);
     process.exit(0);
   } else {

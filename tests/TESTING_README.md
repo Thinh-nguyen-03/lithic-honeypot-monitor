@@ -8,8 +8,8 @@ This directory contains all test files for the Honeypot Transaction Monitoring S
 tests/
 ├── unit/                    # Unit tests for individual components
 │   ├── middleware/          # Middleware tests (validation, authentication, etc.)
-│   ├── controllers/         # Controller tests (alert, webhook, vapi-mcp controllers)
-│   ├── routes/              # Route tests (alert, vapi-mcp routes)
+│   ├── controllers/         # Controller tests (alert, webhook, mcp controllers)
+│   ├── routes/              # Route tests (alert, mcp routes)
 │   ├── services/           # Service layer tests (alert-service, supabase-service, etc.)
 │   └── utils/              # Utility function tests (parsers, logger, etc.)
 ├── integration/            # Integration tests for end-to-end scenarios
@@ -74,8 +74,8 @@ node tests/unit/controllers/alert-controller.test.js
 node tests/unit/routes/alert-routes.test.js
 
 # Enhanced MCP system tests (20 comprehensive tests)
-node tests/unit/controllers/vapi-mcp-controller.test.js
-node tests/unit/routes/vapi-mcp-routes.test.js
+node tests/unit/controllers/mcp-controller.test.js
+node tests/unit/routes/mcp-routes.test.js
 
 # Server integration tests (15 comprehensive tests including Task 5.2)
 node tests/unit/controllers/server-integration.test.js

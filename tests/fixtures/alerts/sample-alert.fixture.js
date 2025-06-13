@@ -90,7 +90,7 @@ export const connectionStatusAlert = {
   cardToken: "card_honeypot123456789",
   status: "CONNECTED",
   details: {
-    agentId: "agent_vapi_001", 
+    agentId: "agent_ai_001", 
     connectionType: "SSE",
     connectedAt: "2024-01-15T10:00:00Z"
   }
