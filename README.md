@@ -23,6 +23,21 @@ The Honeypot Transaction Monitoring System is a sophisticated fraud detection pl
 
 ---
 
+## 🆕 **Recent Updates**
+
+### **Latest Enhancements (January 2025)**
+- ✅ **Enhanced Merchant Intelligence**: Added `description` field to all transaction responses for improved merchant context
+- ✅ **Critical Bug Fix**: Resolved timestamp synchronization issue in transaction processor that could miss transactions with exact timestamp matches
+- ✅ **Improved Data Quality**: Enhanced MCC (Merchant Category Code) lookup with fallback mechanisms for better categorization
+- ✅ **Performance Optimization**: Updated polling logic to use inclusive timestamp filtering with robust duplicate prevention
+
+### **System Reliability Improvements**
+- **Transaction Detection**: Fixed edge case where transactions could be missed during polling cycles
+- **Data Integrity**: Enhanced merchant description extraction from database and MCC services
+- **Error Handling**: Improved fallback logic when merchant data is incomplete
+
+---
+
 ## 🚀 **Features**
 
 ### **✅ Production Implementation (v1.0 COMPLETE)**
@@ -204,6 +219,7 @@ data: {
   },
   "verification": {
     "mccCode": "5814",
+    "merchantDescription": "Eating Places and Restaurants",
     "merchantType": "Coffee Shop",
     "authorizationCode": "123456"
   },
@@ -401,17 +417,24 @@ Returns system performance and connection metrics.
 #### **POST /api/mcp/query**
 Processes MCP tool queries from AI agents.
 
-**Available Tools:**
+**Available Tools (17 Total):**
 - `subscribe_to_alerts` - Subscribe to real-time transaction alerts
-- `unsubscribe_from_alerts` - Clean unsubscription with analytics
+- `unsubscribe_from_alerts` - Clean unsubscription with analytics  
 - `get_subscription_status` - Connection health monitoring
-- `search_transactions` - Natural language transaction queries
-- `get_transaction_details` - Comprehensive transaction data
-- `get_recent_transactions` - Latest transactions with analysis
-- `get_merchant_info` - Merchant intelligence
+- `search_transactions` - Natural language transaction queries with enhanced filtering
+- `get_transaction_details` - Comprehensive transaction data with merchant descriptions
+- `get_recent_transactions` - Latest transactions with enhanced merchant intelligence
+- `get_merchant_info` - Merchant intelligence with MCC enrichment
 - `list_available_cards` - List honeypot cards for verification
 - `get_card_details` - Complete card information including PAN
-- `get_card_info` - Enhanced card information with scenarios
+- `get_card_info` - Enhanced card information with verification scenarios
+- `analyze_transaction_patterns` - Advanced pattern analysis and fraud detection
+- `get_transaction_intelligence` - AI-powered transaction insights
+- `perform_security_analysis` - Security risk assessment and monitoring
+- `generate_verification_questions` - Dynamic scammer verification scenarios
+- `search_merchant_history` - Historical merchant transaction analysis
+- `detect_anomalies` - Real-time anomaly detection and flagging
+- `calculate_risk_scores` - Comprehensive risk assessment algorithms
 
 ### **🔐 Enhanced Card Access API** ✨ **PRODUCTION READY**
 
@@ -537,6 +560,33 @@ node tests/unit/middleware/validation.test.js
 
 # Card access and security tests
 node tests/unit/services/card-service.test.js
+```
+
+### **Quick System Verification**
+
+```bash
+# 1. Health Check
+curl http://localhost:3000/health
+
+# 2. Test MCP System
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{"tool": "get_recent_transactions", "parameters": {"limit": 5}}'
+
+# 3. Test Card Access (if cards available)
+curl -X POST http://localhost:3000/api/mcp/query \
+  -H "Content-Type: application/json" \
+  -d '{"tool": "list_available_cards", "parameters": {"activeOnly": true}}'
+
+# 4. Test Real-time Alerts
+curl -N "http://localhost:3000/alerts/stream/test_card?agentId=test_agent"
+```
+
+### **Integration Testing**
+
+```bash
+# Run integration test with simulated transaction flow
+npm run test:integration
 ```
 
 ### **Test Coverage Summary**
