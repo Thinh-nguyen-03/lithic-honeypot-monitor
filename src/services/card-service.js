@@ -353,40 +353,20 @@ export async function listCards(params = {}) {
 }
 
 /**
- * Get card access analytics and monitoring data.
- * @returns {Object} Card access metrics and statistics
+ * Get card access analytics for monitoring.
+ * @returns {Object} Current card access metrics
  */
 export function getCardAccessMetrics() {
-  const successRate = cardAccessMetrics.requests.total > 0 
-    ? Math.round((cardAccessMetrics.requests.successful / cardAccessMetrics.requests.total) * 100)
-    : 0;
-
   return {
-    requests: {
-      ...cardAccessMetrics.requests,
-      successRate: `${successRate}%`
-    },
-    lastAccess: cardAccessMetrics.lastAccess,
-    cardRequestStats: {
-      uniqueCardsAccessed: cardAccessMetrics.cardRequests.size,
-      topAccessedCards: Array.from(cardAccessMetrics.cardRequests.entries())
-        .sort(([,a], [,b]) => b.count - a.count)
-        .slice(0, 5)
-        .map(([token, metrics]) => ({
-          cardToken: `${token.substring(0, 8)}...`,
-          accessCount: metrics.count,
-          lastAccess: metrics.lastAccess
-        }))
-    },
-    summary: {
-      healthy: successRate >= 95,
-      status: successRate >= 95 ? 'healthy' : successRate >= 80 ? 'degraded' : 'unhealthy'
-    }
+    ...cardAccessMetrics,
+    // Convert Map to object for JSON serialization
+    cardRequests: Object.fromEntries(cardAccessMetrics.cardRequests)
   };
 }
 
 /**
- * Reset card access metrics (useful for testing or periodic resets).
+ * Reset card access metrics.
+ * Useful for testing or periodic metric resets.
  */
 export function resetCardAccessMetrics() {
   cardAccessMetrics.requests.total = 0;
@@ -397,4 +377,261 @@ export function resetCardAccessMetrics() {
   cardAccessMetrics.cardRequests.clear();
   
   logger.info('Card access metrics reset');
+}
+
+// ========== MCP TOOL FUNCTIONS (Task 1.2) ==========
+
+/**
+ * Get available cards formatted for MCP tools.
+ * Contains the core logic moved from handleListAvailableCards in the controller.
+ * 
+ * @param {Object} params - Query parameters
+ * @param {boolean} params.includeDetails - Include additional card details
+ * @param {boolean} params.activeOnly - Filter for only active cards
+ * @param {string} requestId - Request ID for logging
+ * @returns {Promise<Object>} Formatted card list for MCP
+ */
+export async function getAvailableCardsForMcp(params = {}, requestId) {
+  const { includeDetails = false, activeOnly = true } = params;
+
+  logger.debug({
+    requestId,
+    includeDetails,
+    activeOnly
+  }, 'Processing MCP list available cards query in service');
+
+  try {
+    // Get all cards from Lithic using existing service function
+    const allCards = await executeCardOperation(
+      () => listCards(),
+      'listCards',
+      { requestId }
+    );
+    
+    // Filter cards if activeOnly is true
+    const filteredCards = activeOnly 
+      ? allCards.filter(card => card.state === 'OPEN')
+      : allCards;
+
+    const result = {
+      queryType: 'list_available_cards',
+      cardCount: filteredCards.length,
+      cards: filteredCards.map(card => ({
+        token: card.token,
+        lastFour: card.last_four,
+        state: card.state,
+        type: card.type,
+        memo: card.memo || 'Honeypot Card',
+        spendLimit: `$${(card.spend_limit / 100).toFixed(2)}`,
+        created: card.created,
+        isActive: card.state === 'OPEN',
+        // Include additional details if requested
+        ...(includeDetails ? {
+          spendLimitDuration: card.spend_limit_duration,
+          canReceiveTransactions: card.state === 'OPEN'
+        } : {})
+      })),
+      summary: {
+        totalCards: allCards.length,
+        activeCards: allCards.filter(card => card.state === 'OPEN').length,
+        availableForMonitoring: filteredCards.length
+      },
+      recommendations: {
+        suggestedForScammerTesting: filteredCards
+          .filter(card => card.state === 'OPEN' && card.spend_limit <= 1000) // $10 or less
+          .map(card => card.token)
+          .slice(0, 3), // Top 3 recommendations
+        usage: 'These cards are ready for scammer verification scenarios'
+      }
+    };
+
+    logger.info({
+      requestId,
+      cardCount: result.cardCount,
+      activeCards: result.summary.activeCards
+    }, 'Available cards listed for AI agent via MCP service');
+
+    return result;
+
+  } catch (error) {
+    logger.error({
+      requestId,
+      error: error.message
+    }, 'Error processing MCP list available cards query in service');
+    
+    return {
+      queryType: 'list_available_cards',
+      error: error.message,
+      cardCount: 0,
+      cards: [],
+      summary: { totalCards: 0, activeCards: 0, availableForMonitoring: 0 }
+    };
+  }
+}
+
+/**
+ * Get comprehensive card details for MCP tools with scammer verification data.
+ * Contains the core logic moved from handleGetCardDetails in the controller.
+ * 
+ * @param {string} cardToken - Card token to retrieve details for
+ * @param {string} requestId - Request ID for logging
+ * @param {Object} options - Additional options
+ * @param {boolean} options.includeTransactionHistory - Include transaction history
+ * @param {Function} options.getTransactionHistory - Function to get transaction history
+ * @param {Function} options.formatTransactionForAI - Function to format transactions
+ * @param {Function} options.findMostFrequentMerchant - Function to find frequent merchant
+ * @param {Function} options.calculateAverageAmount - Function to calculate average amount
+ * @returns {Promise<Object>} Comprehensive card details for MCP
+ */
+export async function getCardDetailsForMcp(cardToken, requestId, options = {}) {
+  const { 
+    includeTransactionHistory = false,
+    getTransactionHistory,
+    formatTransactionForAI,
+    findMostFrequentMerchant,
+    calculateAverageAmount
+  } = options;
+
+  logger.debug({
+    requestId,
+    cardToken,
+    includeTransactionHistory
+  }, 'Processing MCP get card details query in service');
+
+  // Log security-sensitive card access
+  logger.info({
+    requestId,
+    cardToken: cardToken ? `${cardToken.substring(0, 8)}...` : null,
+    operation: 'get_card_details_mcp',
+    sensitivity: 'HIGH'
+  }, 'Sensitive card data access requested by AI agent via MCP service');
+
+  try {
+    if (!cardToken) {
+      return {
+        queryType: 'get_card_details',
+        error: 'Card token is required',
+        cardToken: null,
+        cardDetails: null
+      };
+    }
+
+    // Get comprehensive card details from Lithic using existing service function
+    const cardDetails = await executeCardOperation(
+      () => getCardDetails(cardToken),
+      'getCardDetails',
+      { cardToken, requestId }
+    );
+    
+    if (!cardDetails) {
+      return {
+        queryType: 'get_card_details',
+        error: 'Card not found',
+        cardToken,
+        cardDetails: null
+      };
+    }
+
+    // Get transaction history if requested and helper functions provided
+    let transactionHistory = null;
+    if (includeTransactionHistory && getTransactionHistory) {
+      try {
+        const transactions = await getTransactionHistory(20);
+        transactionHistory = {
+          recentTransactions: transactions.slice(0, 5).map(formatTransactionForAI || (t => t)),
+          totalCount: transactions.length,
+          patterns: {
+            mostFrequentMerchant: findMostFrequentMerchant ? findMostFrequentMerchant(transactions) : 'N/A',
+            averageAmount: calculateAverageAmount ? calculateAverageAmount(transactions) : 0
+          }
+        };
+      } catch (error) {
+        logger.warn({
+          requestId,
+          cardToken,
+          error: error.message
+        }, 'Failed to retrieve transaction history for card in MCP service');
+      }
+    }
+
+    const result = {
+      queryType: 'get_card_details',
+      cardToken,
+      cardDetails: {
+        // Essential card information
+        token: cardDetails.token,
+        pan: cardDetails.pan, // Full card number - SENSITIVE
+        lastFour: cardDetails.last_four,
+        state: cardDetails.state,
+        type: cardDetails.type,
+        
+        // Financial limits and settings
+        spendLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+        spendLimitDuration: cardDetails.spend_limit_duration,
+        
+        // Metadata
+        memo: cardDetails.memo || 'Honeypot Card',
+        created: cardDetails.created,
+        
+        // Status flags
+        isActive: cardDetails.state === 'OPEN',
+        canReceiveTransactions: cardDetails.state === 'OPEN',
+        
+        // Formatted for scammer verification
+        displayName: `${cardDetails.memo || 'Card'} (...${cardDetails.last_four})`
+      },
+      transactionHistory,
+      scammerVerification: {
+        // Key verification points for scammer testing
+        primaryCardNumber: cardDetails.pan,
+        lastFourDigits: cardDetails.last_four,
+        spendingLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+        cardType: cardDetails.type,
+        isActiveForSpending: cardDetails.state === 'OPEN',
+        
+        // Suggested verification questions
+        verificationQuestions: [
+          `What's the full card number you're using?`,
+          `Can you confirm the last four digits of your card?`,
+          `What's the spending limit on this card?`,
+          `What type of card is this?`,
+          `Is this card currently active?`
+        ],
+        
+        // Expected answers for AI agent
+        expectedAnswers: {
+          fullCardNumber: cardDetails.pan,
+          lastFour: cardDetails.last_four,
+          spendLimit: `$${(cardDetails.spend_limit / 100).toFixed(2)}`,
+          cardType: cardDetails.type,
+          activeStatus: cardDetails.state === 'OPEN' ? 'Yes, active' : 'No, inactive'
+        }
+      }
+    };
+
+    // Log successful card access for security monitoring
+    logger.info({
+      requestId,
+      cardToken: `${cardToken.substring(0, 8)}...`,
+      cardState: cardDetails.state,
+      accessGranted: true,
+      sensitivity: 'HIGH'
+    }, 'Card details successfully provided to AI agent for scammer verification via MCP service');
+
+    return result;
+
+  } catch (error) {
+    logger.error({
+      requestId,
+      cardToken,
+      error: error.message
+    }, 'Error processing MCP get card details query in service');
+    
+    return {
+      queryType: 'get_card_details',
+      cardToken,
+      error: error.message,
+      cardDetails: null
+    };
+  }
 }

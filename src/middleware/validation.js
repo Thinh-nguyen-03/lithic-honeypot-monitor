@@ -10,15 +10,15 @@ import logger from '../utils/logger.js';
 // ========== Schema Definitions ==========
 
 /**
- * Schema for Vapi MCP query requests.
- * Validates tool calls from Vapi AI agents.
+ * Schema for MCP query requests.
+ * Validates tool calls from conversational AI agents.
  */
-const vapiMCPRequestSchema = Joi.object({
+const mcpRequestSchema = Joi.object({
   toolCallId: Joi.string()
     .required()
     .trim()
     .max(100)
-    .description('Unique identifier for the tool call from Vapi'),
+    .description('Unique identifier for the tool call from AI agent'),
   
   tool: Joi.string()
     .required()
@@ -211,12 +211,12 @@ function logValidationError(requestId, validationType, error, req) {
 // ========== Middleware Functions ==========
 
 /**
- * Validates Vapi MCP requests.
+ * Validates MCP requests.
  * @param {Object} req - Express request object.
  * @param {Object} res - Express response object.
  * @param {Function} next - Express next middleware function.
  */
-export async function validateVapiRequest(req, res, next) {
+export async function validateMCPRequest(req, res, next) {
   const requestId = uuidv4();
   req.requestId = requestId;
   
@@ -239,14 +239,14 @@ export async function validateVapiRequest(req, res, next) {
     const sanitizedBody = sanitizeInput(req.body);
     
     // Validate against schema
-    const { error, value } = vapiMCPRequestSchema.validate(sanitizedBody, {
+    const { error, value } = mcpRequestSchema.validate(sanitizedBody, {
       abortEarly: false,
       stripUnknown: true
     });
     
     if (error) {
       const field = error.details[0].path.join('.');
-      logValidationError(requestId, 'vapiMCPRequest', { message: error.details[0].message, field }, req);
+      logValidationError(requestId, 'mcpRequest', { message: error.details[0].message, field }, req);
       return res.status(400).json(createErrorResponse(
         error.details[0].message,
         field,
@@ -261,7 +261,7 @@ export async function validateVapiRequest(req, res, next) {
     // Check rate limiting for sensitive card access tools
     const rateLimitResult = checkCardAccessRateLimit(tool, requestId, req);
     if (rateLimitResult) {
-      logValidationError(requestId, 'vapiMCPRequest', { 
+      logValidationError(requestId, 'mcpRequest', { 
         message: rateLimitResult.error, 
         field: rateLimitResult.field 
       }, req);
@@ -278,7 +278,7 @@ export async function validateVapiRequest(req, res, next) {
     
     // Validate required parameters based on tool type
     if ((tool === 'get_transaction' || tool === 'search_transactions') && !parameters.query) {
-      logValidationError(requestId, 'vapiMCPRequest', { 
+      logValidationError(requestId, 'mcpRequest', { 
         message: 'Query parameter is required for transaction search tools', 
         field: 'parameters.query' 
       }, req);
@@ -291,7 +291,7 @@ export async function validateVapiRequest(req, res, next) {
     }
     
     if (tool === 'get_card_info' && !parameters.cardToken) {
-      logValidationError(requestId, 'vapiMCPRequest', { 
+      logValidationError(requestId, 'mcpRequest', { 
         message: 'Card token is required for get_card_info tool', 
         field: 'parameters.cardToken' 
       }, req);
@@ -304,7 +304,7 @@ export async function validateVapiRequest(req, res, next) {
     }
     
     if (tool === 'get_merchant_info' && !parameters.merchantId) {
-      logValidationError(requestId, 'vapiMCPRequest', { 
+      logValidationError(requestId, 'mcpRequest', { 
         message: 'Merchant ID is required for get_merchant_info tool', 
         field: 'parameters.merchantId' 
       }, req);
@@ -319,7 +319,7 @@ export async function validateVapiRequest(req, res, next) {
     // Enhanced validation for new card access tools
     if (tool === 'get_card_details') {
       if (!parameters.cardToken) {
-        logValidationError(requestId, 'vapiMCPRequest', { 
+        logValidationError(requestId, 'mcpRequest', { 
           message: 'Card token is required for get_card_details tool', 
           field: 'parameters.cardToken' 
         }, req);
@@ -334,7 +334,7 @@ export async function validateVapiRequest(req, res, next) {
       // Enhanced card token validation for sensitive operations
       const cardTokenValidation = validateCardToken(parameters.cardToken, requestId, req);
       if (cardTokenValidation) {
-        logValidationError(requestId, 'vapiMCPRequest', cardTokenValidation, req);
+        logValidationError(requestId, 'mcpRequest', cardTokenValidation, req);
         return res.status(400).json(createErrorResponse(
           cardTokenValidation.error,
           cardTokenValidation.field,
@@ -371,7 +371,7 @@ export async function validateVapiRequest(req, res, next) {
 
       // Validate boolean parameters if present
       if (parameters.activeOnly !== undefined && typeof parameters.activeOnly !== 'boolean') {
-        logValidationError(requestId, 'vapiMCPRequest', { 
+        logValidationError(requestId, 'mcpRequest', { 
           message: 'activeOnly parameter must be a boolean', 
           field: 'parameters.activeOnly' 
         }, req);
@@ -388,7 +388,7 @@ export async function validateVapiRequest(req, res, next) {
     if (tool === 'get_card_info' && parameters.cardToken) {
       const cardTokenValidation = validateCardToken(parameters.cardToken, requestId, req);
       if (cardTokenValidation) {
-        logValidationError(requestId, 'vapiMCPRequest', cardTokenValidation, req);
+        logValidationError(requestId, 'mcpRequest', cardTokenValidation, req);
         return res.status(400).json(createErrorResponse(
           cardTokenValidation.error,
           cardTokenValidation.field,
@@ -404,7 +404,7 @@ export async function validateVapiRequest(req, res, next) {
     // Log successful validation (debug level)
     logger.debug({
       requestId,
-      validationType: 'vapiMCPRequest',
+      validationType: 'mcpRequest',
       tool: value.tool,
       duration: Date.now() - startTime
     }, 'Validation successful');
@@ -647,7 +647,7 @@ export function createValidator(schema, validationType) {
 
 // Export schemas for reuse
 export const schemas = {
-  vapiMCPRequest: vapiMCPRequestSchema,
+  mcpRequest: mcpRequestSchema,
   alertSubscription: alertSubscriptionSchema,
   intelligenceQuery: intelligenceQuerySchema
 };

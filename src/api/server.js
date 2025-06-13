@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 // Import route modules
 import lithic_webhook_routes from "./routes/lithic-webhook-routes.js";
 import alert_routes from "./routes/alert-routes.js";
-import vapi_mcp_routes from "./routes/vapi-mcp-routes.js";
+import mcp_routes from "./routes/mcp-routes.js";
 import system_routes from "./routes/system-routes.js";
 
 // Import services for enhanced health check
@@ -148,8 +148,8 @@ app.use(express.static(path.join(__dirname, '../../frontend/public')));
 // Real-time alert endpoints - mounted first for priority
 app.use("/alerts", alert_routes);
 
-// Vapi MCP server endpoints (JSON parsing already applied globally above)
-app.use("/api/mcp", vapi_mcp_routes);
+// MCP server endpoints (JSON parsing already applied globally above)
+app.use("/api/mcp", mcp_routes);
 
 // System information and data endpoints
 app.use("/system", system_routes);
