@@ -23,26 +23,86 @@ export async function getRecentTransactionsForAgent(limit = 5) {
 
     if (!data) return [];
 
-    return data.map((t) => ({
-      token: t.token, // Include the transaction token
-      timestamp: new Date(t.created_at).toLocaleString(),
-      merchant: t.merchant_name || "Unknown Merchant",
-      location:
-        [t.merchant_city, t.merchant_state, t.merchant_country]
-          .filter(Boolean)
-          .join(", ") || "Unknown Location",
-      amount: `${t.cardholder_currency} ${t.cardholder_amount_usd?.toFixed(2)}`, // cardholder_amount_usd from view
-      merchant_amount:
-        t.merchant_amount_usd !== t.cardholder_amount_usd // merchant_amount_usd from view
-          ? `${t.merchant_currency} ${t.merchant_amount_usd?.toFixed(2)}`
-          : null,
-      status: t.result, // result from view
-      is_approved: t.result === "APPROVED",
-      network: t.network_type?.toUpperCase() || "Unknown Network", // network_type from view
-      authorization_code: t.authorization_code, // authorization_code from view
-      reference_number: t.retrieval_reference_number, // retrieval_reference_number from view
-      category: t.merchant_category || "Unknown Category", // merchant_category from view
-    }));
+    // Enhanced transaction mapping with proper categorization
+    const enhancedTransactions = await Promise.all(
+      data.map(async (t) => {
+        let category = "Unknown Category";
+        let description = "Unknown Description";
+        
+        // First, try using the already-populated mcc_category and mcc_description from database
+        if (t.mcc_category) {
+          category = t.mcc_category;
+          logger.debug(`Using mcc_category from database for ${t.token}: ${t.mcc_category}`);
+        }
+        if (t.mcc_description) {
+          description = t.mcc_description;
+          logger.debug(`Using mcc_description from database for ${t.token}: ${t.mcc_description}`);
+        }
+        
+        // Only do MCC lookup if category or description is missing
+        if ((!t.mcc_category || !t.mcc_description) && t.merchant_mcc_code) {
+          try {
+            logger.debug(`Looking up MCC code ${t.merchant_mcc_code} for transaction ${t.token}`);
+            const mccData = await lookupMCC(t.merchant_mcc_code);
+            
+            if (mccData) {
+              if (!t.mcc_category && mccData.category) {
+                category = mccData.category;
+              }
+              if (!t.mcc_description && mccData.description) {
+                description = mccData.description;
+              }
+              logger.debug(`MCC ${t.merchant_mcc_code} resolved to category: ${category}, description: ${description}`);
+            } else {
+              logger.warn(`MCC lookup returned null for code ${t.merchant_mcc_code}`);
+            }
+          } catch (error) {
+            logger.warn(`Failed to lookup MCC ${t.merchant_mcc_code}:`, error.message);
+          }
+        }
+        
+        // Fallback: if we still don't have category but have description, use description as category
+        if (category === "Unknown Category" && description !== "Unknown Description") {
+          category = description;
+          logger.debug(`Using description as category fallback for ${t.token}: ${description}`);
+        }
+        // Fallback: if we still don't have description but have category, use category as description
+        else if (description === "Unknown Description" && category !== "Unknown Category") {
+          description = category;
+          logger.debug(`Using category as description fallback for ${t.token}: ${category}`);
+        }
+        
+        if (!t.mcc_category && !t.mcc_description && !t.merchant_mcc_code) {
+          logger.debug(`No MCC code, category, or description found for transaction ${t.token}`);
+        }
+
+        return {
+          token: t.token,
+          timestamp: new Date(t.created_at).toLocaleString(),
+          merchant: t.merchant_name || "Unknown Merchant",
+          location:
+            [t.merchant_city, t.merchant_state, t.merchant_country]
+              .filter(Boolean)
+              .join(", ") || "Unknown Location",
+          amount: `${t.cardholder_currency} ${t.cardholder_amount_usd?.toFixed(2)}`,
+          merchant_amount:
+            t.merchant_amount_usd !== t.cardholder_amount_usd
+              ? `${t.merchant_currency} ${t.merchant_amount_usd?.toFixed(2)}`
+              : null,
+          status: t.result,
+          is_approved: t.result === "APPROVED",
+          network: t.network_type?.toUpperCase() || "Unknown Network",
+          authorization_code: t.authorization_code,
+          reference_number: t.retrieval_reference_number,
+          description: description, // Merchant description from database or MCC lookup
+          category: category, // Enhanced category from database or MCC lookup
+          merchant_mcc: t.merchant_mcc_code, // Include MCC code for reference
+        };
+      })
+    );
+
+    logger.debug(`Successfully processed ${enhancedTransactions.length} transactions with categories`);
+    return enhancedTransactions;
   } catch (error) {
     logger.error(
       "Unhandled error fetching recent transactions for agent:",

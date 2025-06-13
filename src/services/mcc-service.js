@@ -21,19 +21,29 @@ let csvDataLoaded = false;
  * @returns {Promise<void>}
  */
 async function loadMccDataFromCsv() {
-  if (csvDataLoaded) return;
+  if (csvDataLoaded) {
+    return;
+  }
   
   return new Promise((resolve, reject) => {
     const csvPath = path.join(__dirname, '../../data/mcc_codes_rows.csv');
     
-    // Debug: Log the resolved path
-    logger.info('Attempting to load CSV from path:', csvPath);
+    logger.info('Loading MCC data from CSV file:', csvPath);
     
-    logger.info('Loading MCC data from CSV file', csvPath);
+    // Check if file exists
+    if (!fs.existsSync(csvPath)) {
+      const error = new Error(`CSV file not found at path: ${csvPath}`);
+      logger.error('CSV file does not exist:', error.message);
+      reject(error);
+      return;
+    }
+    
+    let rowCount = 0;
     
     fs.createReadStream(csvPath)
       .pipe(csv())
       .on('data', (row) => {
+        rowCount++;
         // CSV columns: mcc_code, description, category
         if (row.mcc_code && row.description) {
           const normalizedCode = row.mcc_code.toString().padStart(4, '0');
@@ -42,11 +52,13 @@ async function loadMccDataFromCsv() {
             category: row.category || 'Unknown',
             source: 'csv'
           });
+        } else {
+          logger.debug(`Skipping invalid CSV row ${rowCount}:`, row);
         }
       })
       .on('end', () => {
         csvDataLoaded = true;
-        logger.info(`Loaded ${csvMccData.size} MCC codes from CSV file`);
+        logger.info(`Successfully loaded ${csvMccData.size} MCC codes from CSV file`);
         resolve();
       })
       .on('error', (error) => {
@@ -66,7 +78,7 @@ async function getMccFromCsv(mccCode) {
     try {
       await loadMccDataFromCsv();
     } catch (error) {
-      logger.warn('Failed to load CSV data, continuing without it');
+      logger.warn('Failed to load CSV data, continuing without it:', error.message);
       return null;
     }
   }

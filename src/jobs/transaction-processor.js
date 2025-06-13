@@ -18,16 +18,15 @@ async function checkForNewTransactions() {
     let fetchParams = {};
 
     if (latestInDb && latestInDb.created_at) {
-      // Fetch transactions that occurred after the last one stored.
+      // Fetch transactions that occurred at or after the last one stored.
       const beginDateTime = new Date(latestInDb.created_at);
-      beginDateTime.setSeconds(beginDateTime.getSeconds() + 1);
       fetchParams.begin = beginDateTime.toISOString();
       logger.debug(
         {
           latestTimestamp: latestInDb.created_at,
           fetchBegin: fetchParams.begin,
         },
-        "Fetching transactions after last known timestamp.",
+        "Fetching transactions at or after last known timestamp.",
       );
     } else {
       logger.info(

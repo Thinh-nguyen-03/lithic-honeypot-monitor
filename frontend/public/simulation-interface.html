@@ -471,10 +471,24 @@
 
         // Suspicious MCC codes for random generation
         const suspiciousMCCs = [
-            "5960", "5961", "5962", "5963", "5964", "5965", "5966", "5967", "5968", "5969",
-            "4829", "6010", "6011", "6012", "6051", "6211",
-            "6300", "6381", "7273", "7276", "7277", "7278", "7297"
+            "5960", "5961", "5962", "5963", "5964", "5965", "5966", "5967", "5968", "5969", // Direct Marketing
+            "4829", // Money Transfer
+            "6010", "6011", "6012", // Financial Cash Services
+            "6051", // Quasi-cash
+            "7273", "7276", "7277", "7278", // Personal Services
+            "7321", // Credit Reporting
+            "7800", "7801", "7802", // Government Gambling
+            "7995", // Gambling Betting
+            "8111", // Legal Services
+            "9211", "9222", "9223", "9311", "9399" // Government Services
         ];
+
+        // Word lists for generating realistic suspicious merchant descriptors
+        const descriptorWords = {
+            prefixes: ["Global", "Express", "Quick", "Direct", "Pro", "Elite", "Premier", "Ultimate", "Super", "Fast", "Instant", "Easy", "Smart", "Best", "Top", "Prime", "Max", "Plus", "Advanced", "Consumer", "Customer", "Winner", "Lucky"],
+            business: ["Teleserv", "Marketing", "Financial", "Legal", "Gaming", "Betting", "Travel", "Insurance", "Tax", "Credit", "Dating", "Counseling", "Shopping", "Catalog", "Mail", "Cash", "Money", "Transfer", "Exchange", "Pay", "Reward", "Bonus"],
+            suffixes: ["Services", "Solutions", "Systems", "Corp", "Inc", "LLC", "Co", "Associates", "Partners", "Group", "Enterprises", "Network", "Center", "Hub", "Portal"]
+        };
 
         // Utility Functions
         function generateUUID() {
@@ -917,20 +931,28 @@
                 return;
             }
 
+            // Select random suspicious MCC
             const mcc = suspiciousMCCs[Math.floor(Math.random() * suspiciousMCCs.length)];
-            const amount = (Math.floor(Math.random() * 10000) + 100) / 100; // $1.00 to $100.00
-            const merchants = ['Global Teleserv', 'Win Big Promo', 'Consumer Reward', 'Cash Advance Co'];
-            const merchant = merchants[Math.floor(Math.random() * merchants.length)];
-            const cities = ['NEW YORK', 'LOS ANGELES', 'UNKNOWN', 'OFFSHORE'];
-            const states = ['NY', 'CA', 'XX', 'XX'];
-            const cityIndex = Math.floor(Math.random() * cities.length);
+            
+            // Generate random amount between $1.00 and $999.99
+            const amount = (Math.floor(Math.random() * 99900) + 100) / 100;
+            
+            // Generate merchant descriptor by combining random words
+            const prefix = descriptorWords.prefixes[Math.floor(Math.random() * descriptorWords.prefixes.length)];
+            const business = descriptorWords.business[Math.floor(Math.random() * descriptorWords.business.length)];
+            const suffix = descriptorWords.suffixes[Math.floor(Math.random() * descriptorWords.suffixes.length)];
+            const merchant = `${prefix} ${business} ${suffix}`;
+            
+            // Generate random acceptor ID
+            const acceptorId = 'ACCP' + Math.random().toString(36).substr(2, 8).toUpperCase();
 
+            // Fill form fields with generated data
             document.getElementById('customAmount').value = amount.toFixed(2);
             document.getElementById('customDescriptor').value = merchant;
             document.getElementById('customMCC').value = mcc;
-            document.getElementById('customAcceptorId').value = 'ACCP' + Math.random().toString(36).substr(2, 8).toUpperCase();
-            document.getElementById('customCity').value = cities[cityIndex];
-            document.getElementById('customState').value = states[cityIndex];
+            document.getElementById('customAcceptorId').value = acceptorId;
+            document.getElementById('customCity').value = 'NEW YORK'; // Fixed for sandbox
+            document.getElementById('customState').value = 'XX'; // Fixed for sandbox
 
             addResponse('🎲 Random Transaction Generated', {
                 success: true,
@@ -938,7 +960,8 @@
                     amount: `$${amount.toFixed(2)}`,
                     merchant: merchant,
                     mcc: mcc,
-                    location: `${cities[cityIndex]}, ${states[cityIndex]}`,
+                    location: 'NEW YORK, XX',
+                    acceptorId: acceptorId,
                     cardToken: cardToken
                 },
                 message: 'Random suspicious transaction data generated! Click "Create Transaction" to simulate.'

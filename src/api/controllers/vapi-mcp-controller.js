@@ -20,16 +20,24 @@ import * as cardService from '../../services/card-service.js';
 // Query classification keywords for natural language processing
 const queryClassification = {
   recent: ['last', 'recent', 'latest', 'new', 'current', 'newest'],
-  merchant: ['from', 'at', 'merchant', 'store', 'shop', 'bought', 'purchased', 'where'],
-  statistics: ['stats', 'total', 'count', 'summary', 'how much', 'spent', 'average'],
-  specific: ['transaction', 'purchase', 'payment', 'charge', 'txn'],
-  verification: ['verify', 'confirm', 'check', 'validate', 'authenticate'],
-  amount: ['amount', 'cost', 'price', 'dollar', '$', 'spend', 'money'],
-  location: ['location', 'where', 'city', 'state', 'country', 'address'],
-  time: ['when', 'time', 'date', 'hour', 'minute', 'ago', 'yesterday', 'today'],
-  timeRange: ['hour', 'hours', 'today', 'yesterday', 'week', 'month', 'day', 'days'],
-  amountRange: ['large', 'small', 'big', 'little', 'expensive', 'cheap', 'over', 'under', 'above', 'below'],
-  pattern: ['pattern', 'unusual', 'strange', 'suspicious', 'frequent', 'repeated']
+  merchant: ['from', 'at', 'merchant', 'store', 'shop', 'bought', 'purchased', 'where', 'vendor', 'retailer'],
+  statistics: ['stats', 'total', 'count', 'summary', 'how much', 'spent', 'average', 'analytics', 'report'],
+  specific: ['transaction', 'purchase', 'payment', 'charge', 'txn', 'id'],
+  verification: ['verify', 'confirm', 'check', 'validate', 'authenticate', 'suspicious', 'fraud'],
+  amount: ['amount', 'cost', 'price', 'dollar', '$', 'spend', 'money', 'value', 'worth'],
+  location: ['location', 'where', 'city', 'state', 'country', 'address', 'place', 'region'],
+  time: ['when', 'time', 'date', 'hour', 'minute', 'ago', 'yesterday', 'today', 'before', 'after'],
+  timeRange: ['hour', 'hours', 'today', 'yesterday', 'week', 'month', 'day', 'days', 'weekend', 'weekday'],
+  amountRange: ['large', 'small', 'big', 'little', 'expensive', 'cheap', 'over', 'under', 'above', 'below', 'between'],
+  pattern: ['pattern', 'unusual', 'strange', 'suspicious', 'frequent', 'repeated', 'anomaly', 'outlier'],
+  category: ['category', 'type', 'kind', 'mcc', 'business', 'industry', 'sector'],
+  network: ['visa', 'mastercard', 'amex', 'discover', 'network', 'card', 'credit', 'debit'],
+  status: ['approved', 'declined', 'pending', 'failed', 'successful', 'rejected'],
+  intelligence: ['analyze', 'analysis', 'insight', 'intelligence', 'behavior', 'trend', 'risk'],
+  comparison: ['compare', 'versus', 'vs', 'difference', 'similar', 'like', 'unlike'],
+  frequency: ['often', 'rarely', 'never', 'always', 'sometimes', 'frequency', 'regular', 'irregular'],
+  geography: ['domestic', 'international', 'foreign', 'local', 'nearby', 'distant', 'cross-border'],
+  security: ['security', 'risk', 'threat', 'safe', 'unsafe', 'secure', 'alert', 'warning']
 };
 
 // ========== Alert Subscription Management ==========
@@ -912,6 +920,46 @@ async function handleTransactionSearch(parameters, requestId) {
       logger.debug({ requestId, amountFilter }, 'Applied amount filter');
     }
   }
+
+  // Apply location-based filtering
+  if (queryType.includes('location') || queryType.includes('geography')) {
+    const locationFilter = extractLocationFilter(query);
+    if (locationFilter) {
+      baseTransactions = filterTransactionsByLocation(baseTransactions, locationFilter);
+      appliedFilters.push(`location: ${locationFilter.description}`);
+      logger.debug({ requestId, locationFilter }, 'Applied location filter');
+    }
+  }
+
+  // Apply network-based filtering
+  if (queryType.includes('network')) {
+    const networkFilter = extractNetworkFilter(query);
+    if (networkFilter) {
+      baseTransactions = filterTransactionsByNetwork(baseTransactions, networkFilter);
+      appliedFilters.push(`network: ${networkFilter.description}`);
+      logger.debug({ requestId, networkFilter }, 'Applied network filter');
+    }
+  }
+
+  // Apply status-based filtering
+  if (queryType.includes('status')) {
+    const statusFilter = extractStatusFilter(query);
+    if (statusFilter) {
+      baseTransactions = filterTransactionsByStatus(baseTransactions, statusFilter);
+      appliedFilters.push(`status: ${statusFilter.description}`);
+      logger.debug({ requestId, statusFilter }, 'Applied status filter');
+    }
+  }
+
+  // Apply category-based filtering
+  if (queryType.includes('category')) {
+    const categoryFilter = extractCategoryFilter(query);
+    if (categoryFilter) {
+      baseTransactions = filterTransactionsByCategory(baseTransactions, categoryFilter);
+      appliedFilters.push(`category: ${categoryFilter.description}`);
+      logger.debug({ requestId, categoryFilter }, 'Applied category filter');
+    }
+  }
   
   // Route based on primary query classification
   if (queryType.includes('recent')) {
@@ -946,19 +994,67 @@ async function handleTransactionSearch(parameters, requestId) {
       appliedFilters,
       summary: 'Transaction pattern analysis results'
     };
+  } else if (queryType.includes('intelligence') || queryType.includes('analysis')) {
+    // Advanced intelligence analysis
+    const intelligenceResults = await performAdvancedIntelligence(baseTransactions, query, requestId);
+    return {
+      queryType: 'advanced_intelligence',
+      intelligence: intelligenceResults,
+      appliedFilters,
+      summary: 'Advanced transaction intelligence analysis'
+    };
+  } else if (queryType.includes('comparison')) {
+    // Comparative analysis
+    const comparisonResults = await performComparativeAnalysis(baseTransactions, query, requestId);
+    return {
+      queryType: 'comparative_analysis',
+      comparison: comparisonResults,
+      appliedFilters,
+      summary: 'Comparative transaction analysis'
+    };
+  } else if (queryType.includes('security') || queryType.includes('verification')) {
+    // Security and fraud analysis
+    const securityResults = await performSecurityAnalysis(baseTransactions, query, requestId);
+    return {
+      queryType: 'security_analysis',
+      security: securityResults,
+      appliedFilters,
+      summary: 'Security and fraud analysis results'
+    };
   } else {
-    // Default to recent transactions with any applied filters
+    // Enhanced default handling with smart suggestions
     transactions = baseTransactions.slice(0, limit);
+    
+    // Provide intelligent suggestions based on query content
+    const suggestions = generateQuerySuggestions(query, baseTransactions);
+    
     searchSummary = appliedFilters.length > 0 ? 
       `Filtered transactions` : 
-      `Recent transactions (general query)`;
+      `Recent transactions (${suggestions.queryType})`;
   }
-  
+
   // Add summary of applied filters
   if (appliedFilters.length > 0) {
     searchSummary += ` (filters: ${appliedFilters.join(', ')})`;
   }
-  
+
+  // Generate enhanced query insights
+  const queryInsights = {
+    totalAvailable: baseTransactions.length,
+    filtersApplied: appliedFilters.length,
+    processingNote: appliedFilters.length > 0 ? 
+      'Results filtered based on query criteria' : 
+      'No specific filters applied'
+  };
+
+  // Add suggestions if no filters were applied
+  if (appliedFilters.length === 0) {
+    const suggestions = generateQuerySuggestions(query, baseTransactions);
+    queryInsights.suggestions = suggestions.suggestions;
+    queryInsights.availableFilters = suggestions.availableFilters;
+    queryInsights.queryAnalysis = suggestions.queryType;
+  }
+    
   return {
     queryType: queryType.join(', '),
     transactions: transactions.map(formatTransactionForAI),
@@ -966,12 +1062,28 @@ async function handleTransactionSearch(parameters, requestId) {
     resultsCount: transactions.length,
     appliedFilters,
     verificationData: generateVerificationSuggestions(transactions),
-    queryInsights: {
-      totalAvailable: baseTransactions.length,
-      filtersApplied: appliedFilters.length,
-      processingNote: appliedFilters.length > 0 ? 
-        'Results filtered based on query criteria' : 
-        'No specific filters applied'
+    queryInsights,
+    enhancedCapabilities: {
+      supportedQueries: [
+        'Merchant-specific: "transactions from [merchant]"',
+        'Amount-based: "transactions over $X"',
+        'Time-based: "transactions from yesterday"',
+        'Location-based: "transactions in [location]"',
+        'Status-based: "declined transactions"',
+        'Network-based: "VISA transactions"',
+        'Intelligence: "analyze spending patterns"',
+        'Security: "suspicious transactions"',
+        'Comparison: "compare recent vs historical"'
+      ],
+      advancedFeatures: [
+        'Fraud risk assessment',
+        'Behavioral pattern analysis',
+        'Geographic spending analysis',
+        'Temporal pattern detection',
+        'Merchant diversity analysis',
+        'Anomaly detection',
+        'Security recommendations'
+      ]
     }
   };
 }
@@ -1812,14 +1924,209 @@ function classifyQuery(query) {
  * @returns {string|null} Extracted merchant name or null
  */
 function extractMerchantName(query) {
-  // Simple extraction - would be enhanced with NLP
+  const lowerQuery = query.toLowerCase();
   const words = query.split(' ');
-  const atIndex = words.findIndex(word => word.toLowerCase() === 'at');
-  const fromIndex = words.findIndex(word => word.toLowerCase() === 'from');
   
-  const index = atIndex !== -1 ? atIndex : fromIndex;
-  if (index !== -1 && words[index + 1]) {
-    return words[index + 1].replace(/[^a-zA-Z0-9]/g, '');
+  // Enhanced merchant extraction patterns
+  const merchantPatterns = [
+    // Direct patterns: "at Starbucks", "from Amazon", "purchased at Target"
+    { keywords: ['at', 'from', 'purchased at', 'bought at', 'paid at'], position: 'after' },
+    // Reverse patterns: "Starbucks transaction", "Amazon purchase"
+    { keywords: ['transaction', 'purchase', 'payment', 'charge'], position: 'before' },
+    // Quote patterns: "Global Teleserv", 'Consumer Reward'
+    { keywords: ['"', "'"], position: 'quoted' }
+  ];
+  
+  // Try quoted strings first (most reliable)
+  const quotedMatch = query.match(/["']([^"']+)["']/);
+  if (quotedMatch) {
+    return quotedMatch[1].trim();
+  }
+  
+  // Try pattern-based extraction
+  for (const pattern of merchantPatterns) {
+    for (const keyword of pattern.keywords) {
+      const keywordIndex = lowerQuery.indexOf(keyword);
+      if (keywordIndex !== -1) {
+        if (pattern.position === 'after') {
+          const afterKeyword = query.substring(keywordIndex + keyword.length).trim();
+          const merchantWords = afterKeyword.split(' ').slice(0, 3); // Take up to 3 words
+          const merchant = merchantWords.join(' ').replace(/[^\w\s]/g, '').trim();
+          if (merchant && merchant.length > 2) return merchant;
+        } else if (pattern.position === 'before') {
+          const beforeKeyword = query.substring(0, keywordIndex).trim();
+          const merchantWords = beforeKeyword.split(' ').slice(-3); // Take last 3 words
+          const merchant = merchantWords.join(' ').replace(/[^\w\s]/g, '').trim();
+          if (merchant && merchant.length > 2) return merchant;
+        }
+      }
+    }
+  }
+  
+  // Fallback: look for capitalized words (likely merchant names)
+  const capitalizedWords = words.filter(word => 
+    word.length > 2 && 
+    word[0] === word[0].toUpperCase() && 
+    !['The', 'And', 'Or', 'At', 'From', 'To', 'In', 'On'].includes(word)
+  );
+  
+  if (capitalizedWords.length > 0) {
+    return capitalizedWords.slice(0, 2).join(' '); // Take up to 2 capitalized words
+  }
+  
+  return null;
+}
+
+/**
+ * Extract location criteria from natural language query.
+ * @private
+ * @param {string} query - Natural language query
+ * @returns {Object|null} Location filter configuration
+ */
+function extractLocationFilter(query) {
+  const lowerQuery = query.toLowerCase();
+  
+  // Location patterns
+  const locationPatterns = [
+    { keywords: ['in', 'from', 'at'], position: 'after' },
+    { keywords: ['new york', 'ny', 'california', 'ca', 'texas', 'tx', 'florida', 'fl'], position: 'direct' },
+    { keywords: ['domestic', 'local', 'usa', 'us', 'america'], type: 'domestic' },
+    { keywords: ['international', 'foreign', 'overseas', 'abroad'], type: 'international' }
+  ];
+  
+  for (const pattern of locationPatterns) {
+    for (const keyword of pattern.keywords) {
+      if (lowerQuery.includes(keyword)) {
+        if (pattern.type) {
+          return { type: pattern.type, description: `${pattern.type} transactions` };
+        } else if (pattern.position === 'after') {
+          const keywordIndex = lowerQuery.indexOf(keyword);
+          const afterKeyword = query.substring(keywordIndex + keyword.length).trim();
+          const location = afterKeyword.split(' ').slice(0, 2).join(' ').replace(/[^\w\s]/g, '').trim();
+          if (location && location.length > 2) {
+            return { location, description: `transactions in ${location}` };
+          }
+        } else if (pattern.position === 'direct') {
+          return { location: keyword, description: `transactions in ${keyword}` };
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract network/card type criteria from query.
+ * @private
+ * @param {string} query - Natural language query
+ * @returns {Object|null} Network filter configuration
+ */
+function extractNetworkFilter(query) {
+  const lowerQuery = query.toLowerCase();
+  
+  const networkMap = {
+    'visa': 'VISA',
+    'mastercard': 'MASTERCARD',
+    'master card': 'MASTERCARD',
+    'amex': 'AMEX',
+    'american express': 'AMEX',
+    'discover': 'DISCOVER'
+  };
+  
+  for (const [keyword, network] of Object.entries(networkMap)) {
+    if (lowerQuery.includes(keyword)) {
+      return { network, description: `${network} transactions` };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract status criteria from query.
+ * @private
+ * @param {string} query - Natural language query
+ * @returns {Object|null} Status filter configuration
+ */
+function extractStatusFilter(query) {
+  const lowerQuery = query.toLowerCase();
+  
+  const statusMap = {
+    'approved': 'APPROVED',
+    'successful': 'APPROVED',
+    'completed': 'APPROVED',
+    'declined': 'DECLINED',
+    'rejected': 'DECLINED',
+    'failed': 'DECLINED',
+    'pending': 'PENDING'
+  };
+  
+  for (const [keyword, status] of Object.entries(statusMap)) {
+    if (lowerQuery.includes(keyword)) {
+      return { status, description: `${status.toLowerCase()} transactions` };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract category/MCC criteria from query.
+ * @private
+ * @param {string} query - Natural language query
+ * @returns {Object|null} Category filter configuration
+ */
+function extractCategoryFilter(query) {
+  const lowerQuery = query.toLowerCase();
+  
+  // Common business categories
+  const categoryMap = {
+    'restaurant': 'restaurant',
+    'food': 'restaurant',
+    'dining': 'restaurant',
+    'gas': 'gas station',
+    'fuel': 'gas station',
+    'grocery': 'grocery',
+    'supermarket': 'grocery',
+    'retail': 'retail',
+    'shopping': 'retail',
+    'hotel': 'hotel',
+    'travel': 'travel',
+    'airline': 'airline',
+    'telecom': 'telecommunications',
+    'phone': 'telecommunications',
+    'utility': 'utilities',
+    'medical': 'medical',
+    'healthcare': 'medical'
+  };
+  
+  for (const [keyword, category] of Object.entries(categoryMap)) {
+    if (lowerQuery.includes(keyword)) {
+      return { category, description: `${category} transactions` };
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract frequency criteria from query.
+ * @private
+ * @param {string} query - Natural language query
+ * @returns {Object|null} Frequency filter configuration
+ */
+function extractFrequencyFilter(query) {
+  const lowerQuery = query.toLowerCase();
+  
+  if (lowerQuery.includes('frequent') || lowerQuery.includes('often') || lowerQuery.includes('regular')) {
+    return { type: 'frequent', minCount: 3, description: 'frequent transactions' };
+  }
+  if (lowerQuery.includes('rare') || lowerQuery.includes('infrequent') || lowerQuery.includes('seldom')) {
+    return { type: 'rare', maxCount: 1, description: 'rare transactions' };
+  }
+  if (lowerQuery.includes('first time') || lowerQuery.includes('new merchant')) {
+    return { type: 'first_time', description: 'first-time merchant transactions' };
   }
   
   return null;
@@ -1864,6 +2171,7 @@ function formatTransactionForAI(transaction) {
     location: transaction.location,
     status: transaction.status,
     network: transaction.network,
+    description: transaction.description,
     category: transaction.category,
     isApproved: transaction.is_approved,
     verificationPoints: {
@@ -1888,9 +2196,16 @@ function formatDetailedTransactionForAI(transaction) {
       conversionRate: transaction.conversion_rate,
       networkInfo: transaction.network_info,
       merchantDetails: {
-        acceptorId: transaction.merchant_acceptor_id,
-        mcc: transaction.merchant_mcc,
-        descriptor: transaction.merchant_descriptor
+        acceptorId: transaction.acceptor_id,
+        mcc: transaction.merchant_mcc_code,
+        mccCategory: transaction.mcc_category,
+        mccDescription: transaction.mcc_description,
+        merchantName: transaction.merchant_name,
+        location: {
+          city: transaction.merchant_city,
+          state: transaction.merchant_state,
+          country: transaction.merchant_country
+        }
       }
     }
   };
@@ -2824,6 +3139,75 @@ function filterTransactionsByAmount(transactions, amountFilter) {
 }
 
 /**
+ * Filter transactions based on location criteria.
+ * @private
+ * @param {Array} transactions - Array of transactions
+ * @param {Object} locationFilter - Location filter configuration
+ * @returns {Array} Filtered transactions
+ */
+function filterTransactionsByLocation(transactions, locationFilter) {
+  return transactions.filter(transaction => {
+    const location = (transaction.location || '').toLowerCase();
+    
+    if (locationFilter.type === 'domestic') {
+      return location.includes('usa') || location.includes('us') || 
+             location.includes('united states') || !location.includes(',');
+    }
+    if (locationFilter.type === 'international') {
+      return !location.includes('usa') && !location.includes('us') && 
+             !location.includes('united states') && location.includes(',');
+    }
+    if (locationFilter.location) {
+      return location.includes(locationFilter.location.toLowerCase());
+    }
+    
+    return true;
+  });
+}
+
+/**
+ * Filter transactions based on network criteria.
+ * @private
+ * @param {Array} transactions - Array of transactions
+ * @param {Object} networkFilter - Network filter configuration
+ * @returns {Array} Filtered transactions
+ */
+function filterTransactionsByNetwork(transactions, networkFilter) {
+  return transactions.filter(transaction => {
+    const network = (transaction.network || '').toUpperCase();
+    return network === networkFilter.network;
+  });
+}
+
+/**
+ * Filter transactions based on status criteria.
+ * @private
+ * @param {Array} transactions - Array of transactions
+ * @param {Object} statusFilter - Status filter configuration
+ * @returns {Array} Filtered transactions
+ */
+function filterTransactionsByStatus(transactions, statusFilter) {
+  return transactions.filter(transaction => {
+    const status = (transaction.status || '').toUpperCase();
+    return status === statusFilter.status;
+  });
+}
+
+/**
+ * Filter transactions based on category criteria.
+ * @private
+ * @param {Array} transactions - Array of transactions
+ * @param {Object} categoryFilter - Category filter configuration
+ * @returns {Array} Filtered transactions
+ */
+function filterTransactionsByCategory(transactions, categoryFilter) {
+  return transactions.filter(transaction => {
+    const category = (transaction.category || '').toLowerCase();
+    return category.includes(categoryFilter.category.toLowerCase());
+  });
+}
+
+/**
  * Generate enhanced statistics from filtered transactions.
  * @private
  * @param {Array} transactions - Array of transactions
@@ -2888,6 +3272,418 @@ async function generateEnhancedStatistics(transactions, query) {
     timeframe: 'Based on available transaction data',
     queryContext: `Statistics generated for: ${query}`
   };
+}
+
+/**
+ * Generate intelligent query suggestions based on content.
+ * @private
+ * @param {string} query - Original query
+ * @param {Array} transactions - Available transactions
+ * @returns {Object} Query suggestions and insights
+ */
+function generateQuerySuggestions(query, transactions) {
+  const lowerQuery = query.toLowerCase();
+  const suggestions = [];
+  let queryType = 'general query';
+  
+  // Analyze query intent and provide suggestions
+  if (lowerQuery.length < 3) {
+    queryType = 'empty or short query';
+    suggestions.push(
+      'Try: "transactions from Global Teleserv"',
+      'Try: "large transactions over $50"',
+      'Try: "transactions from yesterday"',
+      'Try: "declined transactions"',
+      'Try: "VISA transactions"'
+    );
+  } else {
+    // Suggest based on available data
+    const merchants = [...new Set(transactions.map(t => t.merchant))].slice(0, 3);
+    const locations = [...new Set(transactions.map(t => t.location))].slice(0, 2);
+    
+    if (merchants.length > 0) {
+      suggestions.push(`Try: "transactions from ${merchants[0]}"`);
+    }
+    if (locations.length > 0) {
+      suggestions.push(`Try: "transactions in ${locations[0]}"`);
+    }
+    
+    suggestions.push(
+      'Try: "suspicious transactions"',
+      'Try: "spending analytics"',
+      'Try: "transaction patterns"'
+    );
+    
+    queryType = 'unrecognized query pattern';
+  }
+  
+  return {
+    queryType,
+    suggestions,
+    availableFilters: [
+      'Merchant: "from [merchant name]"',
+      'Amount: "over $X", "under $Y"', 
+      'Time: "yesterday", "last week"',
+      'Location: "in [city/state]"',
+      'Status: "approved", "declined"',
+      'Network: "VISA", "Mastercard"'
+    ]
+  };
+}
+
+/**
+ * Perform advanced intelligence analysis on transactions.
+ * @private
+ * @param {Array} transactions - Array of transactions
+ * @param {string} query - Original query
+ * @param {string} requestId - Request ID
+ * @returns {Promise<Object>} Advanced intelligence results
+ */
+async function performAdvancedIntelligence(transactions, query, requestId) {
+  try {
+    const analysis = {
+      behavioralPatterns: {
+        spendingVelocity: calculateSpendingVelocity(transactions),
+        merchantDiversity: calculateMerchantDiversity(transactions),
+        geographicSpread: analyzeGeographicPatterns(transactions),
+        temporalPatterns: analyzeTemporalPatterns(transactions)
+      },
+      riskAssessment: {
+        riskScore: calculateRiskScore(transactions),
+        anomalies: detectAnomalies(transactions),
+        fraudIndicators: identifyFraudIndicators(transactions)
+      },
+      insights: generateAdvancedInsights(transactions),
+      recommendations: generateIntelligenceRecommendations(transactions)
+    };
+    
+    return analysis;
+  } catch (error) {
+    logger.error({ requestId, error: error.message }, 'Advanced intelligence analysis failed');
+    return { error: 'Intelligence analysis failed', requestId };
+  }
+}
+
+/**
+ * Perform comparative analysis between different transaction sets.
+ * @private
+ * @param {Array} transactions - Array of transactions
+ * @param {string} query - Original query
+ * @param {string} requestId - Request ID
+ * @returns {Promise<Object>} Comparative analysis results
+ */
+async function performComparativeAnalysis(transactions, query, requestId) {
+  try {
+    // Split transactions into time periods for comparison
+    const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    const recentTransactions = transactions.filter(t => 
+      new Date(t.timestamp || t.created_at) >= oneWeekAgo
+    );
+    const olderTransactions = transactions.filter(t => 
+      new Date(t.timestamp || t.created_at) < oneWeekAgo
+    );
+    
+    const comparison = {
+      timeComparison: {
+        recent: {
+          count: recentTransactions.length,
+          totalAmount: calculateTotalSpent(recentTransactions),
+          averageAmount: calculateAverageAmount(recentTransactions),
+          uniqueMerchants: countUniqueMerchants(recentTransactions)
+        },
+        historical: {
+          count: olderTransactions.length,
+          totalAmount: calculateTotalSpent(olderTransactions),
+          averageAmount: calculateAverageAmount(olderTransactions),
+          uniqueMerchants: countUniqueMerchants(olderTransactions)
+        }
+      },
+      trends: {
+        spendingTrend: recentTransactions.length > olderTransactions.length ? 'increasing' : 'decreasing',
+        merchantDiversification: countUniqueMerchants(recentTransactions) > countUniqueMerchants(olderTransactions) ? 'expanding' : 'contracting'
+      },
+      insights: [
+        `Recent activity: ${recentTransactions.length} transactions vs ${olderTransactions.length} historical`,
+        `Spending pattern: ${recentTransactions.length > olderTransactions.length ? 'More active recently' : 'Less active recently'}`,
+        `Merchant variety: ${countUniqueMerchants(recentTransactions)} recent vs ${countUniqueMerchants(olderTransactions)} historical`
+      ]
+    };
+    
+    return comparison;
+  } catch (error) {
+    logger.error({ requestId, error: error.message }, 'Comparative analysis failed');
+    return { error: 'Comparative analysis failed', requestId };
+  }
+}
+
+/**
+ * Perform security and fraud analysis on transactions.
+ * @private
+ * @param {Array} transactions - Array of transactions
+ * @param {string} query - Original query
+ * @param {string} requestId - Request ID
+ * @returns {Promise<Object>} Security analysis results
+ */
+async function performSecurityAnalysis(transactions, query, requestId) {
+  try {
+    const securityAnalysis = {
+      fraudRisk: {
+        overallRisk: calculateOverallFraudRisk(transactions),
+        highRiskTransactions: identifyHighRiskTransactions(transactions),
+        suspiciousPatterns: identifySuspiciousPatterns(transactions)
+      },
+      verificationPoints: {
+        strongVerification: transactions.filter(t => t.verificationPoints?.authCode).length,
+        weakVerification: transactions.filter(t => !t.verificationPoints?.authCode).length,
+        verificationRate: `${Math.round((transactions.filter(t => t.verificationPoints?.authCode).length / transactions.length) * 100)}%`
+      },
+      securityRecommendations: generateSecurityRecommendations(transactions),
+      alertTriggers: identifyAlertTriggers(transactions)
+    };
+    
+    return securityAnalysis;
+  } catch (error) {
+    logger.error({ requestId, error: error.message }, 'Security analysis failed');
+    return { error: 'Security analysis failed', requestId };
+  }
+}
+
+// Helper functions for advanced analysis
+function calculateSpendingVelocity(transactions) {
+  if (transactions.length < 2) return 'insufficient data';
+  
+  const amounts = transactions.map(t => parseFloat(t.amount?.replace(/[^0-9.-]/g, '') || '0'));
+  const totalSpent = amounts.reduce((sum, amount) => sum + amount, 0);
+  const timeSpan = transactions.length; // Simplified velocity calculation
+  
+  return `$${(totalSpent / timeSpan).toFixed(2)} per transaction`;
+}
+
+function calculateMerchantDiversity(transactions) {
+  const uniqueMerchants = new Set(transactions.map(t => t.merchant)).size;
+  const totalTransactions = transactions.length;
+  
+  return {
+    uniqueMerchants,
+    diversityRatio: totalTransactions > 0 ? (uniqueMerchants / totalTransactions).toFixed(2) : '0',
+    diversityLevel: uniqueMerchants / totalTransactions > 0.8 ? 'high' : 
+                   uniqueMerchants / totalTransactions > 0.5 ? 'medium' : 'low'
+  };
+}
+
+function analyzeGeographicPatterns(transactions) {
+  const locations = transactions.map(t => t.location).filter(Boolean);
+  const uniqueLocations = [...new Set(locations)];
+  
+  return {
+    uniqueLocations: uniqueLocations.length,
+    primaryLocation: locations.length > 0 ? locations[0] : 'unknown',
+    geographicSpread: uniqueLocations.length > 3 ? 'wide' : uniqueLocations.length > 1 ? 'moderate' : 'narrow'
+  };
+}
+
+function analyzeTemporalPatterns(transactions) {
+  const hours = transactions.map(t => {
+    const date = new Date(t.timestamp || t.created_at);
+    return date.getHours();
+  });
+  
+  const businessHours = hours.filter(h => h >= 9 && h <= 17).length;
+  const afterHours = hours.filter(h => h < 9 || h > 17).length;
+  
+  return {
+    businessHoursTransactions: businessHours,
+    afterHoursTransactions: afterHours,
+    primaryTimePattern: businessHours > afterHours ? 'business hours' : 'after hours'
+  };
+}
+
+function calculateRiskScore(transactions) {
+  let riskScore = 0;
+  
+  // Risk factors
+  const declinedCount = transactions.filter(t => t.status !== 'APPROVED').length;
+  const largeTransactions = transactions.filter(t => {
+    const amount = parseFloat(t.amount?.replace(/[^0-9.-]/g, '') || '0');
+    return amount > 100;
+  }).length;
+  
+  riskScore += (declinedCount / transactions.length) * 30; // 30% weight for declined
+  riskScore += (largeTransactions / transactions.length) * 20; // 20% weight for large amounts
+  
+  return Math.min(Math.round(riskScore), 100);
+}
+
+function detectAnomalies(transactions) {
+  const anomalies = [];
+  
+  // Detect unusual amounts
+  const amounts = transactions.map(t => parseFloat(t.amount?.replace(/[^0-9.-]/g, '') || '0'));
+  const avgAmount = amounts.reduce((sum, amt) => sum + amt, 0) / amounts.length;
+  
+  transactions.forEach((transaction, index) => {
+    const amount = amounts[index];
+    if (amount > avgAmount * 3) {
+      anomalies.push({
+        type: 'unusual_amount',
+        transaction: transaction.id,
+        description: `Amount $${amount} is ${Math.round(amount / avgAmount)}x higher than average`
+      });
+    }
+  });
+  
+  return anomalies;
+}
+
+function identifyFraudIndicators(transactions) {
+  const indicators = [];
+  
+  // Check for rapid successive transactions
+  const timestamps = transactions.map(t => new Date(t.timestamp || t.created_at));
+  for (let i = 1; i < timestamps.length; i++) {
+    const timeDiff = timestamps[i-1] - timestamps[i];
+    if (timeDiff < 60000) { // Less than 1 minute apart
+      indicators.push('rapid_successive_transactions');
+      break;
+    }
+  }
+  
+  // Check for round number amounts (potential fraud indicator)
+  const roundAmounts = transactions.filter(t => {
+    const amount = parseFloat(t.amount?.replace(/[^0-9.-]/g, '') || '0');
+    return amount % 10 === 0 && amount > 0;
+  });
+  
+  if (roundAmounts.length / transactions.length > 0.7) {
+    indicators.push('high_round_number_frequency');
+  }
+  
+  return indicators;
+}
+
+function generateAdvancedInsights(transactions) {
+  return [
+    `Analyzed ${transactions.length} transactions for behavioral patterns`,
+    `Primary spending pattern: ${transactions.length > 10 ? 'active user' : 'light user'}`,
+    `Geographic consistency: ${analyzeGeographicPatterns(transactions).geographicSpread}`,
+    `Merchant loyalty: ${calculateMerchantDiversity(transactions).diversityLevel}`
+  ];
+}
+
+function generateIntelligenceRecommendations(transactions) {
+  const recommendations = [];
+  
+  if (transactions.length < 5) {
+    recommendations.push('Insufficient transaction history for comprehensive analysis');
+  }
+  
+  const riskScore = calculateRiskScore(transactions);
+  if (riskScore > 50) {
+    recommendations.push('High risk score detected - recommend additional verification');
+  }
+  
+  const diversity = calculateMerchantDiversity(transactions);
+  if (diversity.diversityLevel === 'low') {
+    recommendations.push('Low merchant diversity - monitor for potential account takeover');
+  }
+  
+  return recommendations;
+}
+
+function calculateOverallFraudRisk(transactions) {
+  const riskScore = calculateRiskScore(transactions);
+  
+  if (riskScore > 70) return 'high';
+  if (riskScore > 40) return 'medium';
+  return 'low';
+}
+
+function identifyHighRiskTransactions(transactions) {
+  return transactions.filter(transaction => {
+    const amount = parseFloat(transaction.amount?.replace(/[^0-9.-]/g, '') || '0');
+    return amount > 100 || transaction.status !== 'APPROVED';
+  }).map(t => ({
+    id: t.id,
+    amount: t.amount,
+    merchant: t.merchant,
+    riskFactors: [
+      parseFloat(t.amount?.replace(/[^0-9.-]/g, '') || '0') > 100 ? 'large_amount' : null,
+      t.status !== 'APPROVED' ? 'declined_transaction' : null
+    ].filter(Boolean)
+  }));
+}
+
+function identifySuspiciousPatterns(transactions) {
+  const patterns = [];
+  
+  // Check for velocity patterns
+  if (transactions.length > 5) {
+    const recentHour = transactions.filter(t => {
+      const transactionTime = new Date(t.timestamp || t.created_at);
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      return transactionTime > oneHourAgo;
+    });
+    
+    if (recentHour.length > 3) {
+      patterns.push('high_velocity_transactions');
+    }
+  }
+  
+  return patterns;
+}
+
+function generateSecurityRecommendations(transactions) {
+  const recommendations = [];
+  
+  const riskLevel = calculateOverallFraudRisk(transactions);
+  if (riskLevel === 'high') {
+    recommendations.push('Implement additional authentication measures');
+    recommendations.push('Monitor account for unusual activity');
+  }
+  
+  const declinedCount = transactions.filter(t => t.status !== 'APPROVED').length;
+  if (declinedCount > transactions.length * 0.2) {
+    recommendations.push('High decline rate detected - investigate payment methods');
+  }
+  
+  return recommendations;
+}
+
+function identifyAlertTriggers(transactions) {
+  const triggers = [];
+  
+  // Large amount trigger
+  const largeTransactions = transactions.filter(t => {
+    const amount = parseFloat(t.amount?.replace(/[^0-9.-]/g, '') || '0');
+    return amount > 500;
+  });
+  
+  if (largeTransactions.length > 0) {
+    triggers.push({
+      type: 'large_amount',
+      count: largeTransactions.length,
+      threshold: '$500+'
+    });
+  }
+  
+  // Velocity trigger
+  const recentTransactions = transactions.filter(t => {
+    const transactionTime = new Date(t.timestamp || t.created_at);
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    return transactionTime > oneHourAgo;
+  });
+  
+  if (recentTransactions.length > 5) {
+    triggers.push({
+      type: 'high_velocity',
+      count: recentTransactions.length,
+      timeframe: '1 hour'
+    });
+  }
+  
+  return triggers;
 }
 
 /**
