@@ -1,12 +1,28 @@
 /**
- * Alert Controller - Handles SSE connections for AI agents and real-time message delivery
+ * Alert Controller - Handles Server-Sent Events (SSE) connections for web interfaces and human monitoring
  * 
- * This controller provides:
- * - SSE endpoint establishment for AI agents
- * - Authentication and authorization checking
- * - Real-time transaction alert delivery
+ * PURPOSE: HUMAN-TO-SYSTEM COMMUNICATION for real-time monitoring interfaces and web dashboards
+ * 
+ * TARGET CLIENTS:
+ * - Web Dashboard and browser-based monitoring interfaces
+ * - Development Tools and testing simulation interfaces  
+ * - Administrative Monitoring for human oversight of AI agent activity
+ * - EventSource API for browser-native real-time connections
+ * 
+ * PROTOCOL: Server-Sent Events (SSE) with web token authentication
+ * 
+ * CAPABILITIES:
+ * - SSE endpoint establishment for web interfaces
+ * - Browser EventSource API compatibility
+ * - Real-time transaction alert streaming
  * - Connection lifecycle management
- * - Error handling and monitoring
+ * - Web-friendly authentication and error handling
+ * 
+ * SECURITY: MODERATE - Simplified authentication for browser access, no PAN data exposure
+ * 
+ * NOTE: This is DISTINCT from /api/mcp/query endpoints which serve AI agents.
+ *       Alert endpoints are specifically designed for human-accessible monitoring interfaces,
+ *       while MCP endpoints serve AI agents during live scammer verification calls.
  */
 
 import { v4 as uuidv4 } from 'uuid';

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { handleLithicEvent } from "../controllers/lithic-webhook-controller.js";
 import * as lithicService from '../../services/lithic-service.js';
 import * as cardService from '../../services/card-service.js';
+import * as supabaseService from '../../services/supabase-service.js';
 import logger from '../../utils/logger.js';
 
 const router = express.Router();
@@ -62,6 +63,39 @@ router.post('/simulate', async (req, res) => {
       result: simulation.result 
     }, 'Transaction simulation completed');
     
+    // Automatically process the simulated transaction (since webhooks don't fire for simulations)
+    try {
+      logger.info({ 
+        requestId,
+        simulationToken: simulation.token 
+      }, 'Processing simulated transaction to database');
+      
+      // Wait a few seconds for Lithic to process the transaction before fetching
+      logger.info({ 
+        requestId,
+        simulationToken: simulation.token 
+      }, 'Waiting 3 seconds for Lithic to process the transaction...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Fetch the full transaction details from Lithic API
+      const fullTransaction = await lithicService.getTransaction(simulation.token);
+      
+      // Save to Supabase (this will also trigger alerts)
+      await supabaseService.saveTransaction(fullTransaction);
+      
+      logger.info({ 
+        requestId,
+        simulationToken: simulation.token 
+      }, 'Simulated transaction processed and saved successfully');
+      
+    } catch (processingError) {
+      logger.warn({ 
+        requestId,
+        simulationToken: simulation.token,
+        error: processingError.message 
+      }, 'Failed to automatically process simulated transaction - will be picked up by polling');
+    }
+    
     res.json({
       success: true,
       simulation: {
@@ -72,7 +106,7 @@ router.post('/simulate', async (req, res) => {
         amount: amount,
         descriptor: descriptor,
         mcc: simulationOptions.mcc,
-        message: 'Real transaction simulated successfully using Lithic API'
+        message: 'Real transaction simulated and processed successfully'
       }
     });
     
