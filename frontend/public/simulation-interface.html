@@ -537,12 +537,15 @@
                 </div>
             `;
             
-            container.insertAdjacentHTML('afterbegin', responseHtml);
+            container.insertAdjacentHTML('beforeend', responseHtml);
+            
+            // Auto-scroll to show the latest event
+            container.scrollTop = container.scrollHeight;
             
             // Limit to last 10 responses
             const responses = container.querySelectorAll('.json-container');
             if (responses.length > 10) {
-                responses[responses.length - 1].remove();
+                responses[0].remove();
             }
         }
 
